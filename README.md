@@ -1,4 +1,4 @@
-# System Monitor ++
+# zentop
 
 A highly optimized, native desktop system monitor built with Python, GTK3, and `psutil`. Features a custom Penpot-inspired UI with real-time performance tracking, advanced process management, and dynamic theming.
 
