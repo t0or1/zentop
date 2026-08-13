@@ -1,0 +1,149 @@
+/* System Monitor ++ theme — EVA-00
+   Prototipo repintado: azul pálido casi blanco con franjas naranja. */
+
+window { background-color: #0A1420; }
+box.root-bg { background-color: #0A1420; }
+
+.title-label {
+    color: #FF8C1A;
+    font-weight: 800;
+    font-size: 28px;
+    letter-spacing: 2px;
+}
+
+.section-label {
+    color: #B8DCEE;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.bar-label {
+    color: #6E96AD;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+}
+
+stackswitcher.pill-switcher button {
+    background-color: transparent;
+    background-image: none;
+    color: #6E96AD;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    border-radius: 8px;
+    border: none;
+    box-shadow: none;
+    padding: 8px 22px;
+    margin: 0 4px;
+}
+
+stackswitcher.pill-switcher button:checked {
+    background-color: #1B2C3D;
+    color: #FF8C1A;
+}
+
+stackswitcher.pill-switcher button:hover {
+    background-color: #131E2B;
+}
+
+combobox button, combobox box, .tree-toggle {
+    background-color: #131E2B;
+    background-image: none;
+    color: #B8DCEE;
+    border: 1px solid #24374A;
+    border-radius: 6px;
+    padding: 6px 10px;
+    box-shadow: none;
+}
+
+.tree-toggle:checked {
+    background-color: #234158;
+    color: #FF8C1A;
+    border-color: #FF8C1A;
+}
+
+.tree-toggle:hover, combobox button:hover { border-color: #FF8C1A; }
+
+treeview.data-table {
+    background-color: #0A1420;
+    color: #DCEEF7;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+}
+
+treeview.data-table:selected {
+    background-color: #234158;
+    color: #FFFFFF;
+}
+
+treeview.data-table header button {
+    background-color: #131E2B;
+    background-image: none;
+    color: #6E96AD;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 8px 10px;
+}
+
+progressbar { min-height: 18px; }
+progressbar trough { background-color: #131E2B; border-radius: 6px; border: none; }
+progressbar.cpu-bar progress { background-color: #FF8C1A; border-radius: 6px; }
+progressbar.ram-bar progress { background-color: #7FD4F0; border-radius: 6px; }
+progressbar.swap-bar progress { background-color: #E4572E; border-radius: 6px; }
+
+.net-recv-label { color: #FF8C1A; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
+.net-sent-label { color: #7FD4F0; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
+
+.search-entry, entry {
+    background-color: #131E2B;
+    color: #DCEEF7;
+    border: 1px solid #24374A;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.search-entry:focus, entry:focus {
+    border-color: #FF8C1A;
+    box-shadow: 0 0 0 1px #FF8C1A;
+}
+
+entry selection { background-color: #234158; color: #FFFFFF; }
+
+menu, menuitem { background-color: #131E2B; color: #DCEEF7; }
+menuitem:hover { background-color: #234158; color: #FFFFFF; }
+
+.props-key { color: #6E96AD; font-weight: 700; font-size: 12px; }
+.props-value { color: #DCEEF7; font-family: "JetBrains Mono", monospace; font-size: 12px; }
+
+dialog, .props-dialog { background-color: #0A1420; color: #DCEEF7; }
+
+dialog button, .props-dialog button {
+    background-color: #131E2B;
+    background-image: none;
+    color: #DCEEF7;
+    border: 1px solid #24374A;
+    border-radius: 6px;
+    padding: 6px 14px;
+    box-shadow: none;
+}
+dialog button:hover { border-color: #FF8C1A; }
+
+checkbutton check:checked { background-color: #FF8C1A; border-color: #FF8C1A; }
+
+spinbutton, spinbutton entry {
+    background-color: #131E2B;
+    color: #DCEEF7;
+    border: 1px solid #24374A;
+    border-radius: 6px;
+}
+
+scrolledwindow, viewport { background-color: #0A1420; }
+
+eventbox { background-color: transparent; }
+.theme-name { color: #DCEEF7; font-weight: 700; font-size: 14px; }
+.theme-desc { color: #6E96AD; font-size: 12px; }

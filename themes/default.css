@@ -1,0 +1,241 @@
+/* System Monitor ++ theme
+   Base: GitHub Dark (#0D1117 / #161B22). Accent family: violeta/púrpura
+   en lugar del celeste original — cubre CPU bar, selección, foco de
+   inputs, toggle de árbol y las líneas de los gráficos de historial. */
+
+window {
+    background-color: #0D1117;
+}
+
+box.root-bg {
+    background-color: #0D1117;
+}
+
+.title-label {
+    color: #FFFFFF;
+    font-weight: 800;
+    font-size: 28px;
+    letter-spacing: 2px;
+}
+
+.section-label {
+    color: #E6E6E6;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.bar-label {
+    color: #8B949E;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+}
+
+/* Pill tab switcher (Processes | Resources | File Systems) */
+stackswitcher.pill-switcher button {
+    background-color: transparent;
+    background-image: none;
+    color: #8B949E;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    border-radius: 8px;
+    border: none;
+    box-shadow: none;
+    padding: 8px 22px;
+    margin: 0 4px;
+}
+
+stackswitcher.pill-switcher button:checked {
+    background-color: #3B2A5C;
+    color: #FFFFFF;
+}
+
+stackswitcher.pill-switcher button:hover {
+    background-color: #21172F;
+}
+
+/* Filter combo box + tree-view toggle (Processes toolbar) */
+combobox button,
+combobox box,
+.tree-toggle {
+    background-color: #161B22;
+    background-image: none;
+    color: #E6E6E6;
+    border: 1px solid #21262D;
+    border-radius: 6px;
+    padding: 6px 10px;
+    box-shadow: none;
+}
+
+.tree-toggle:checked {
+    background-color: #3B2A5C;
+    color: #FFFFFF;
+    border-color: #8B5CF6;
+}
+
+.tree-toggle:hover, combobox button:hover {
+    border-color: #8B5CF6;
+}
+
+/* Process / filesystem tables */
+treeview.data-table {
+    background-color: #0D1117;
+    color: #E6E6E6;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+}
+
+treeview.data-table:selected {
+    background-color: #3B2A5C;
+    color: #FFFFFF;
+}
+
+treeview.data-table header button {
+    background-color: #161B22;
+    background-image: none;
+    color: #8B949E;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 8px 10px;
+}
+
+/* Progress bars (CPU cores / RAM / swap / disk usage %) */
+progressbar {
+    min-height: 18px;
+}
+
+progressbar trough {
+    background-color: #161B22;
+    border-radius: 6px;
+    border: none;
+}
+
+progressbar.cpu-bar progress {
+    background-color: #8B5CF6;
+    border-radius: 6px;
+}
+
+progressbar.ram-bar progress {
+    background-color: #A78BFA;
+    border-radius: 6px;
+}
+
+progressbar.swap-bar progress {
+    background-color: #F0883E;
+    border-radius: 6px;
+}
+
+/* Network history labels */
+.net-recv-label {
+    color: #8B5CF6;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.net-sent-label {
+    color: #F472B6;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+/* Search entry + generic input focus */
+.search-entry, entry {
+    background-color: #161B22;
+    color: #E6E6E6;
+    border: 1px solid #21262D;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.search-entry:focus, entry:focus {
+    border-color: #8B5CF6;
+    box-shadow: 0 0 0 1px #8B5CF6;
+}
+
+entry selection {
+    background-color: #6D28D9;
+    color: #FFFFFF;
+}
+
+/* Context menu */
+menu, menuitem {
+    background-color: #161B22;
+    color: #E6E6E6;
+}
+
+menuitem:hover {
+    background-color: #3B2A5C;
+    color: #FFFFFF;
+}
+
+/* Properties / priority dialogs */
+.props-key {
+    color: #8B949E;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.props-value {
+    color: #E6E6E6;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+}
+
+dialog, .props-dialog {
+    background-color: #0D1117;
+    color: #E6E6E6;
+}
+
+dialog button,
+.props-dialog button {
+    background-color: #161B22;
+    background-image: none;
+    color: #E6E6E6;
+    border: 1px solid #21262D;
+    border-radius: 6px;
+    padding: 6px 14px;
+    box-shadow: none;
+}
+
+dialog button:hover {
+    border-color: #8B5CF6;
+}
+
+checkbutton check:checked {
+    background-color: #8B5CF6;
+    border-color: #8B5CF6;
+}
+
+spinbutton, spinbutton entry {
+    background-color: #161B22;
+    color: #E6E6E6;
+    border: 1px solid #21262D;
+    border-radius: 6px;
+}
+
+scrolledwindow, viewport {
+    background-color: #0D1117;
+}
+
+/* THEMES tab */
+eventbox {
+    background-color: transparent;
+}
+
+.theme-name {
+    color: #E6E6E6;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.theme-desc {
+    color: #8B949E;
+    font-size: 12px;
+}
