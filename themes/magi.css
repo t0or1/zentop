@@ -1,0 +1,155 @@
+/* System Monitor ++ theme — MAGI
+   Terminal de supercomputadora, fiel a la serie: negro casi puro,
+   monocromo ÁMBAR (no verde) — el color real de los paneles MAGI.
+   Swap usa un naranja más rojizo, dentro de la misma familia, como
+   "alerta" sin salirse de la paleta monocromática. */
+
+window { background-color: #060606; }
+box.root-bg { background-color: #060606; }
+
+.title-label {
+    color: #FFB000;
+    font-weight: 800;
+    font-size: 28px;
+    letter-spacing: 2px;
+}
+
+.section-label {
+    color: #F0C878;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.bar-label {
+    color: #B8752E;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+}
+
+stackswitcher.pill-switcher button {
+    background-color: transparent;
+    background-image: none;
+    color: #B8752E;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    border-radius: 8px;
+    border: none;
+    box-shadow: none;
+    padding: 8px 22px;
+    margin: 0 4px;
+}
+
+stackswitcher.pill-switcher button:checked {
+    background-color: #241708;
+    color: #FFB000;
+}
+
+stackswitcher.pill-switcher button:hover {
+    background-color: #14100A;
+}
+
+combobox button, combobox box, .tree-toggle {
+    background-color: #14100A;
+    background-image: none;
+    color: #F0C878;
+    border: 1px solid #3A2A10;
+    border-radius: 6px;
+    padding: 6px 10px;
+    box-shadow: none;
+}
+
+.tree-toggle:checked {
+    background-color: #4D3410;
+    color: #FFB000;
+    border-color: #FFB000;
+}
+
+.tree-toggle:hover, combobox button:hover { border-color: #FFB000; }
+
+treeview.data-table {
+    background-color: #060606;
+    color: #FFB000;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+}
+
+treeview.data-table:selected {
+    background-color: #4D3410;
+    color: #FFF3E0;
+}
+
+treeview.data-table header button {
+    background-color: #14100A;
+    background-image: none;
+    color: #B8752E;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 8px 10px;
+}
+
+progressbar {
+    min-height: 18px;
+    color: #FFB000;
+}
+progressbar trough { background-color: #14100A; border-radius: 6px; border: none; }
+progressbar.cpu-bar progress { background-color: #FFB000; border-radius: 6px; }
+progressbar.ram-bar progress { background-color: #FFCC66; border-radius: 6px; }
+progressbar.swap-bar progress { background-color: #FF5A1F; border-radius: 6px; }
+
+.net-recv-label { color: #FFB000; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
+.net-sent-label { color: #FFCC66; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
+
+.search-entry, entry {
+    background-color: #14100A;
+    color: #FFD98C;
+    border: 1px solid #3A2A10;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.search-entry:focus, entry:focus {
+    border-color: #FFB000;
+    box-shadow: 0 0 0 1px #FFB000;
+}
+
+entry selection { background-color: #4D3410; color: #FFF3E0; }
+
+menu, menuitem { background-color: #14100A; color: #FFD98C; }
+menuitem:hover { background-color: #4D3410; color: #FFF3E0; }
+
+.props-key { color: #B8752E; font-weight: 700; font-size: 12px; }
+.props-value { color: #FFD98C; font-family: "JetBrains Mono", monospace; font-size: 12px; }
+
+dialog, .props-dialog { background-color: #060606; color: #FFD98C; }
+
+dialog button, .props-dialog button {
+    background-color: #14100A;
+    background-image: none;
+    color: #FFD98C;
+    border: 1px solid #3A2A10;
+    border-radius: 6px;
+    padding: 6px 14px;
+    box-shadow: none;
+}
+dialog button:hover { border-color: #FFB000; }
+
+checkbutton check:checked { background-color: #FFB000; border-color: #FFB000; }
+
+spinbutton, spinbutton entry {
+    background-color: #14100A;
+    color: #FFD98C;
+    border: 1px solid #3A2A10;
+    border-radius: 6px;
+}
+
+scrolledwindow, viewport { background-color: #060606; }
+
+eventbox { background-color: transparent; }
+.theme-name { color: #FFD98C; font-weight: 700; font-size: 14px; }
+.theme-desc { color: #B8752E; font-size: 12px; }

@@ -1,0 +1,154 @@
+/* System Monitor ++ theme — PASTEL FUCSIA
+   Fondo rosa pálido con acentos fucsia y lavanda, todo en tonos pastel.
+   Primer tema de fondo CLARO — el texto pasa a ciruela oscuro para
+   mantener contraste legible en vez de blanco/verde/etc. */
+
+window { background-color: #FDF0F5; }
+box.root-bg { background-color: #FDF0F5; }
+
+.title-label {
+    color: #E85CA6;
+    font-weight: 800;
+    font-size: 28px;
+    letter-spacing: 2px;
+}
+
+.section-label {
+    color: #8C3A63;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+}
+
+.bar-label {
+    color: #B87A9E;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+}
+
+stackswitcher.pill-switcher button {
+    background-color: transparent;
+    background-image: none;
+    color: #B87A9E;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    border-radius: 8px;
+    border: none;
+    box-shadow: none;
+    padding: 8px 22px;
+    margin: 0 4px;
+}
+
+stackswitcher.pill-switcher button:checked {
+    background-color: #F2A6CB;
+    color: #3D1428;
+}
+
+stackswitcher.pill-switcher button:hover {
+    background-color: #FBE6EF;
+}
+
+combobox button, combobox box, .tree-toggle {
+    background-color: #F8DCE8;
+    background-image: none;
+    color: #8C3A63;
+    border: 1px solid #E8B8D0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    box-shadow: none;
+}
+
+.tree-toggle:checked {
+    background-color: #F2A6CB;
+    color: #3D1428;
+    border-color: #E85CA6;
+}
+
+.tree-toggle:hover, combobox button:hover { border-color: #E85CA6; }
+
+treeview.data-table {
+    background-color: #FDF0F5;
+    color: #5C1F3D;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+}
+
+treeview.data-table:selected {
+    background-color: #F2A6CB;
+    color: #3D1428;
+}
+
+treeview.data-table header button {
+    background-color: #F8DCE8;
+    background-image: none;
+    color: #B87A9E;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 8px 10px;
+}
+
+progressbar {
+    min-height: 18px;
+    color: #4A1830;
+}
+progressbar trough { background-color: #F8DCE8; border-radius: 6px; border: none; }
+progressbar.cpu-bar progress { background-color: #E85CA6; border-radius: 6px; }
+progressbar.ram-bar progress { background-color: #C9A0DC; border-radius: 6px; }
+progressbar.swap-bar progress { background-color: #F4978E; border-radius: 6px; }
+
+.net-recv-label { color: #E85CA6; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
+.net-sent-label { color: #C9A0DC; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
+
+.search-entry, entry {
+    background-color: #F8DCE8;
+    color: #5C1F3D;
+    border: 1px solid #E8B8D0;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.search-entry:focus, entry:focus {
+    border-color: #E85CA6;
+    box-shadow: 0 0 0 1px #E85CA6;
+}
+
+entry selection { background-color: #F2A6CB; color: #3D1428; }
+
+menu, menuitem { background-color: #F8DCE8; color: #5C1F3D; }
+menuitem:hover { background-color: #F2A6CB; color: #3D1428; }
+
+.props-key { color: #B87A9E; font-weight: 700; font-size: 12px; }
+.props-value { color: #5C1F3D; font-family: "JetBrains Mono", monospace; font-size: 12px; }
+
+dialog, .props-dialog { background-color: #FDF0F5; color: #5C1F3D; }
+
+dialog button, .props-dialog button {
+    background-color: #F8DCE8;
+    background-image: none;
+    color: #5C1F3D;
+    border: 1px solid #E8B8D0;
+    border-radius: 6px;
+    padding: 6px 14px;
+    box-shadow: none;
+}
+dialog button:hover { border-color: #E85CA6; }
+
+checkbutton check:checked { background-color: #E85CA6; border-color: #E85CA6; }
+
+spinbutton, spinbutton entry {
+    background-color: #F8DCE8;
+    color: #5C1F3D;
+    border: 1px solid #E8B8D0;
+    border-radius: 6px;
+}
+
+scrolledwindow, viewport { background-color: #FDF0F5; }
+
+eventbox { background-color: transparent; }
+.theme-name { color: #5C1F3D; font-weight: 700; font-size: 14px; }
+.theme-desc { color: #B87A9E; font-size: 12px; }
