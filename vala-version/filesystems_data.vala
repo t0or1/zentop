@@ -57,7 +57,12 @@ namespace FsData {
 
     /* Filesystems the kernel backs with a real device (no "nodev" flag in
      * /proc/filesystems) -- the same filter psutil.disk_partitions() uses. */
-    private Gee.HashSet<string> physical_fstypes() {
+    private Gee.HashSet<string>? fstypes_cache = null;
+
+    /* Cached; re-read only when a mount shows a type we haven't seen (a
+     * module such as exfat loaded since), so the 5 s refresh reads one file. */
+    private Gee.HashSet<string> physical_fstypes(bool force = false) {
+        if (fstypes_cache != null && !force) return fstypes_cache;
         var set = new Gee.HashSet<string>();
         string data;
         try { FileUtils.get_contents("/proc/filesystems", out data); } catch (Error e) { return set; }
@@ -66,18 +71,27 @@ namespace FsData {
             set.add(line.strip());
         }
         set.add("zfs"); // psutil special-cases zfs too
+        fstypes_cache = set;
         return set;
     }
+
+    private Gee.HashSet<string>? known_virtual = null; // types confirmed "nodev"
+
 
     public Gee.ArrayList<Partition> partitions() {
         var list = new Gee.ArrayList<Partition>();
         var fstypes = physical_fstypes();
+        if (known_virtual == null) known_virtual = new Gee.HashSet<string>();
         string data;
         try { FileUtils.get_contents("/proc/self/mounts", out data); } catch (Error e) { return list; }
         foreach (unowned string line in data.split("\n")) {
             string[] f = line.split(" ");
             if (f.length < 3 || f[0] == "" || f[0] == "none") continue;
-            if (!fstypes.contains(f[2])) continue;
+            if (!fstypes.contains(f[2])) {
+                if (known_virtual.contains(f[2])) continue;
+                fstypes = physical_fstypes(true);        // new type: refresh the list once
+                if (!fstypes.contains(f[2])) { known_virtual.add(f[2]); continue; }
+            }
             Posix.statvfs st;
             string mp = unescape_mount(f[1]);
             if (Posix.statvfs_exec(mp, out st) != 0) continue;

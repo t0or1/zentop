@@ -1,12 +1,15 @@
 /* process_scan.vala -- per-process figures straight from /proc.
  *
- * Runs on a worker thread. Cost per process per tick: one open/read of
- * /proc/<pid>/stat into a reused buffer, parsed in place (no split, no
- * per-field strings). Everything that never changes for a pid (name,
- * start time, formatted "started") is resolved once and kept in a PidState,
- * which also carries the previous CPU/IO samples. PidStates of processes
- * that exited are dropped every tick, so the cache can't grow over a long
- * session. Disk I/O (/proc/<pid>/io) is read every 3rd tick only. */
+ * Runs on a worker thread. Cost per process per tick: one pread() of
+ * /proc/<pid>/stat on an fd kept open since the pid was first seen (no path
+ * walk, ~3x cheaper than open+read+close), parsed in place into a shared
+ * buffer (no split, no per-field strings). Owner uid comes from fstat() on
+ * that same fd. Everything that never changes for a pid (name, start time,
+ * formatted "started") is resolved once and kept in a PidState with the
+ * previous CPU/IO samples. PidStates of exited processes are dropped every
+ * tick, closing their fds, so nothing grows over a long session. Disk I/O
+ * (/proc/<pid>/io) is read every 3rd tick only. If the fd limit is ever hit,
+ * that pid simply falls back to open/read/close. */
 
 public class ProcessRow {
     public int pid;
@@ -34,6 +37,8 @@ private class PidState {
     public int64 start_ticks;     // identifies the process across pid reuse
     public string stat_path;
     public string io_path;
+    public int stat_fd = -1;
+    public int io_fd = -1;        // -2: not readable (someone else's process)
     public string name;
     public string name_key;
     public string user = "-";
@@ -52,6 +57,11 @@ private class PidState {
     public int64 write_total = -1;
     public double read_rate = -1;
     public double write_rate = -1;
+
+    ~PidState() {
+        if (stat_fd >= 0) Posix.close(stat_fd);
+        if (io_fd >= 0) Posix.close(io_fd);
+    }
 }
 
 public class ProcessCache : Object {
@@ -115,11 +125,19 @@ public class ProcessCache : Object {
 
     /* Whole small /proc file into `buf`; returns bytes read or -1. */
     private ssize_t read_file(string path) {
-        int fd = Posix.open(path, Posix.O_RDONLY);
+        int fd = Posix.open(path, Posix.O_RDONLY | Posix.O_CLOEXEC);
         if (fd < 0) return -1;
         ssize_t n = Posix.read(fd, buf, buf.length - 1);
         Posix.close(fd);
         return n;
+    }
+
+    /* pread on a kept fd; opens it on first use. `fd` stays -1 if the open
+     * failed (fd limit): then this is a one-off open/read/close. */
+    private ssize_t read_kept(ref int fd, string path) {
+        if (fd < 0) fd = Posix.open(path, Posix.O_RDONLY | Posix.O_CLOEXEC);
+        if (fd < 0) return read_file(path);
+        return Posix.pread(fd, buf, buf.length - 1, 0);
     }
 
     /* One tick: every pid in /proc, parsed. */
@@ -179,9 +197,28 @@ public class ProcessCache : Object {
 
     private ProcessRow? read_process(int pid, double now, int today, bool fetch_io) {
         var st = states[pid];
-        string stat_path = st != null ? st.stat_path : "/proc/%d/stat".printf(pid);
-        ssize_t n = read_file(stat_path);
-        if (n <= 0) return null; // exited between listing and reading: normal
+        ssize_t n;
+        int new_fd = -1;
+        string stat_path;
+        if (st != null) {
+            stat_path = st.stat_path;
+            n = read_kept(ref st.stat_fd, stat_path);
+            if (n <= 0 && st.stat_fd >= 0) {
+                // the process behind this fd is gone; the pid may already
+                // belong to a new one, so look again with a fresh open
+                Posix.close(st.stat_fd);
+                st.stat_fd = -1;
+                st = null;
+                n = read_kept(ref new_fd, stat_path);
+            }
+        } else {
+            stat_path = "/proc/%d/stat".printf(pid);
+            n = read_kept(ref new_fd, stat_path);
+        }
+        if (n <= 0) {  // exited (ESRCH on a kept fd) or vanished between listing and reading
+            if (new_fd >= 0) Posix.close(new_fd);
+            return null;
+        }
         buf[n] = 0;
         int ns, ne;
         uint8 state;
@@ -189,7 +226,7 @@ public class ProcessCache : Object {
 
         int64 start_ticks = fields[F_START];
         if (st == null || st.start_ticks != start_ticks) {
-            st = new_state(pid, stat_path, start_ticks, ((string) buf).substring(ns, ne - ns), today);
+            st = new_state(pid, stat_path, start_ticks, ((string) buf).substring(ns, ne - ns), today, new_fd);
             states[pid] = st;
         } else if (st.started_day != today) {
             st.started = Fmt.started(st.create_time, today); // the date rolled over
@@ -227,10 +264,11 @@ public class ProcessCache : Object {
         return row;
     }
 
-    private PidState new_state(int pid, string stat_path, int64 start_ticks, string comm, int today) {
+    private PidState new_state(int pid, string stat_path, int64 start_ticks, string comm, int today, int stat_fd) {
         var st = new PidState();
         st.start_ticks = start_ticks;
         st.stat_path = stat_path;
+        st.stat_fd = stat_fd;
         st.io_path = "/proc/%d/io".printf(pid);
         st.name = full_name(pid, comm);
         st.name_key = st.name.down();
@@ -253,14 +291,21 @@ public class ProcessCache : Object {
         return base_name.has_prefix(comm) ? base_name : comm;
     }
 
+    /* /proc/<pid>/* inodes are owned by the process's effective uid, so the
+     * kept stat fd answers this with no path lookup. */
     private void refresh_user(PidState st, int pid) {
         Posix.Stat s;
-        if (Posix.stat(Path.get_dirname(st.stat_path), out s) == 0) st.user = user_name((uint) s.st_uid);
+        int r = st.stat_fd >= 0 ? Posix.fstat(st.stat_fd, out s) : Posix.stat(st.stat_path, out s);
+        if (r == 0) st.user = user_name((uint) s.st_uid);
     }
 
     private void read_io(PidState st, double now) {
-        ssize_t n = read_file(st.io_path);
-        if (n <= 0) return; // not our process: stays "-"
+        if (st.io_fd == -2) return;          // known unreadable: don't retry every time
+        ssize_t n = read_kept(ref st.io_fd, st.io_path);
+        if (n <= 0) {
+            if (st.io_fd < 0 && Posix.errno == Posix.EACCES) st.io_fd = -2; // not ours: stays "-"
+            return;
+        }
         buf[n] = 0;
         int64 rd = io_field((string) buf, "read_bytes: ");
         int64 wr = io_field((string) buf, "write_bytes: ");

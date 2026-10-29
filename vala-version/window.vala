@@ -3,30 +3,36 @@
  *
  * Scheduling: a single timer drives everything; each tick only does the
  * work for the visible tab (Resources every 1 s, Processes/Pie every 2 s,
- * File Systems every 5 s) plus the header every 2 s. While the window is
- * minimised nothing runs at all. */
+ * File Systems every 5 s) plus the header every 2 s, which reuses the
+ * Resources sample when that tab is on screen. While the window is
+ * minimised the timer is removed altogether: no work and no wake-ups.
+ *
+ * Tabs other than Processes are built the first time they are opened: an
+ * empty box holds each one's place in the stack until then, so start-up
+ * builds one tab, not five, and an unvisited tab costs nothing. */
 
 public class ZentopWindow : Gtk.ApplicationWindow {
     private AppContext ctx;
     private Gtk.CssProvider css = new Gtk.CssProvider();
     private string theme_id;
     private ProcessFeed feed = new ProcessFeed();
-    private ResourcesSampler header_sampler = new ResourcesSampler();
     private Gtk.Label hdr_cpu;
     private Gtk.Label hdr_mem;
     private bool hdr_hot = false;
+    private Gtk.Stack stack;
     private ProcessesTab processes;
-    private ResourcesTab resources;
-    private PieTab pie;
-    private FilesystemsTab filesystems;
-    private ThemesTab themes;
+    private ResourcesTab? resources = null;
+    private PieTab? pie = null;
+    private FilesystemsTab? filesystems = null;
+    private ThemesTab? themes = null;
     private string active = "processes";
     private uint ticks = 0;
     private bool minimised = false;
+    private uint timer = 0;
 
     public ZentopWindow(Gtk.Application app) {
         Object(application: app, title: "zentop", default_width: 1440, default_height: 900);
-        ctx = new AppContext(this, new ResourcesSampler().sample_memory().total);
+        ctx = new AppContext(this);
         theme_id = AppConfig.get_theme();
         load_theme(theme_id);
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css,
@@ -35,18 +41,27 @@ public class ZentopWindow : Gtk.ApplicationWindow {
         ctx.theme.read_from(get_style_context());
         style_updated.connect(on_style_updated);
         window_state_event.connect((e) => {
-            bool was = minimised;
-            minimised = (e.new_window_state & Gdk.WindowState.ICONIFIED) != 0;
-            if (was && !minimised) refresh_now();   // back on screen: catch up at once
+            bool now_min = (e.new_window_state & Gdk.WindowState.ICONIFIED) != 0;
+            if (now_min == minimised) return false;
+            minimised = now_min;
+            if (minimised) {
+                // no timer at all while minimised: zero wake-ups, not cheap ones
+                Source.remove(timer);
+                timer = 0;
+            } else {
+                refresh_now();   // back on screen: catch up at once
+                timer = Timeout.add_seconds(1, on_tick);
+            }
             return false;
         });
         feed.rows_ready.connect(on_rows);
-        destroy.connect(() => { filesystems.cancel_scan(); feed.shutdown(); });
-
-        header_sampler.sample_cpu();
-        refresh_header();
+        destroy.connect(() => {
+            if (filesystems != null) filesystems.cancel_scan();
+            feed.shutdown();
+        });
+        refresh_header(false);
         refresh_now();
-        Timeout.add_seconds(1, on_tick);
+        timer = Timeout.add_seconds(1, on_tick);
     }
 
     private bool load_theme(string id) {
@@ -72,7 +87,7 @@ public class ZentopWindow : Gtk.ApplicationWindow {
         var title = Ui.label("ZENTOP", "title-label");
         title.margin_end = 28;
         header.pack_start(title, false, false, 0);
-        var stack = new Gtk.Stack();
+        stack = new Gtk.Stack();
         stack.transition_type = Gtk.StackTransitionType.NONE; // instant: zero animation frames
         var switcher = new Gtk.StackSwitcher();
         switcher.stack = stack;
@@ -85,23 +100,53 @@ public class ZentopWindow : Gtk.ApplicationWindow {
 
         processes = new ProcessesTab(ctx);
         processes.refresh_wanted.connect(() => feed.request());
-        resources = new ResourcesTab(ctx);
-        pie = new PieTab(ctx);
-        filesystems = new FilesystemsTab(ctx);
-        themes = new ThemesTab(ctx, theme_id);
-        themes.chosen.connect(apply_theme);
         stack.add_titled(processes, "processes", "PROCESSES");
-        stack.add_titled(resources, "resources", "RESOURCES");
-        stack.add_titled(pie, "piegraph", "PIE GRAPH");
-        stack.add_titled(filesystems, "filesystems", "FILE SYSTEMS");
-        stack.add_titled(themes, "themes", "THEMES");
+        stack.add_titled(placeholder(), "resources", "RESOURCES");
+        stack.add_titled(placeholder(), "piegraph", "PIE GRAPH");
+        stack.add_titled(placeholder(), "filesystems", "FILE SYSTEMS");
+        stack.add_titled(placeholder(), "themes", "THEMES");
         switcher.homogeneous = false; // after the pages exist: tabs as wide as their words
         stack.notify["visible-child-name"].connect(() => {
             active = stack.visible_child_name;
+            ensure_tab(active);
             refresh_now();
         });
         root.pack_start(stack, true, true, 0);
         root.show_all();
+    }
+
+    private static Gtk.Box placeholder() {
+        return new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+    }
+
+    /* Builds a tab into its placeholder the first time it's shown. */
+    private void ensure_tab(string name) {
+        Gtk.Widget? tab = null;
+        switch (name) {
+            case "resources":
+                if (resources != null) return;
+                tab = resources = new ResourcesTab(ctx);
+                break;
+            case "piegraph":
+                if (pie != null) return;
+                tab = pie = new PieTab(ctx);
+                break;
+            case "filesystems":
+                if (filesystems != null) return;
+                tab = filesystems = new FilesystemsTab(ctx);
+                break;
+            case "themes":
+                if (themes != null) return;
+                themes = new ThemesTab(ctx, theme_id);
+                themes.chosen.connect(apply_theme);
+                tab = themes;
+                break;
+            default:
+                return;
+        }
+        var holder = (Gtk.Box) stack.get_child_by_name(name);
+        holder.pack_start(tab, true, true, 0);
+        tab.show_all();
     }
 
     private Gtk.Label header_stat(Gtk.Box header, string key) {
@@ -118,15 +163,15 @@ public class ZentopWindow : Gtk.ApplicationWindow {
     // ------------------------------------------------------------- schedule
 
     private bool on_tick() {
-        if (minimised) return true;
         ticks++;
-        if (ticks % 2 == 0) refresh_header();
+        bool resources_sampled = false;
         switch (active) {
-            case "resources": resources.refresh(); break;
+            case "resources": resources.refresh(); resources_sampled = true; break;
             case "processes": if (ticks % 2 == 0 && !processes.paused) feed.request(); break;
             case "piegraph": if (ticks % 2 == 0) feed.request(); break;
             case "filesystems": if (ticks % 5 == 0) filesystems.refresh(); break;
         }
+        if (ticks % 2 == 0) refresh_header(resources_sampled);
         return true;
     }
 
@@ -144,13 +189,17 @@ public class ZentopWindow : Gtk.ApplicationWindow {
         else if (active == "piegraph") pie.apply(rows);
     }
 
-    /* Always-visible figures: two tiny /proc reads every 2 s. */
-    private void refresh_header() {
-        header_sampler.sample_cpu();
-        var m = header_sampler.sample_memory();
-        double cpu = header_sampler.cpu_total;
+    /* Always-visible figures. `fresh`: Resources sampled this tick already,
+     * so reuse that instead of reading /proc/stat and meminfo again. */
+    private void refresh_header(bool fresh) {
+        var s = ctx.sampler;
+        if (!fresh) {
+            s.sample_cpu();
+            s.sample_memory();
+        }
+        double cpu = s.cpu_total;
         Ui.set_text(hdr_cpu, "%.0f%%".printf(cpu));
-        Ui.set_text(hdr_mem, "%s / %s".printf(Fmt.bytes((int64) m.used), Fmt.bytes((int64) m.total)));
+        Ui.set_text(hdr_mem, "%s / %s".printf(Fmt.bytes((int64) s.mem.used), Fmt.bytes((int64) s.mem.total)));
         bool hot = cpu >= 80;
         if (hot == hdr_hot) return;
         hdr_hot = hot;
@@ -174,14 +223,15 @@ public class ZentopWindow : Gtk.ApplicationWindow {
     }
 
     /* Also fires on focus in/out (backdrop): only act when the colours
-     * really changed, so that stays free. */
+     * really changed, so that stays free. Unbuilt tabs read the colours
+     * when they are built. */
     private void on_style_updated() {
         if (!ctx.theme.read_from(get_style_context())) return;
         processes.invalidate();
-        resources.redraw();
-        pie.redraw();
-        filesystems.redraw();
-        themes.redraw();
+        if (resources != null) resources.redraw();
+        if (pie != null) pie.redraw();
+        if (filesystems != null) filesystems.redraw();
+        if (themes != null) themes.redraw();
         refresh_now();
     }
 }

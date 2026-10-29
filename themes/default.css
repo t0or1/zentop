@@ -1,0 +1,252 @@
+/* zentop theme: DEFAULT — GitHub Dark
+   Generated from one shared template so every theme has the same
+   structure; only the palette changes. Performance rules for all themes:
+   no transitions, no box-shadow, no gradients, no text-shadow -- each of
+   those makes GTK redraw more than it needs to. */
+
+/* ---- performance: kill default animations and effects ---- */
+button, entry, combobox button, menuitem, checkbutton check, radiobutton radio,
+scrollbar slider, treeview header button, stackswitcher button, spinbutton button,
+progressbar trough, progressbar progress {
+    transition: none;
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+    background-image: none;
+}
+
+/* ---- ground ---- */
+window, box.root-bg, dialog, scrolledwindow, viewport, stack {
+    background-color: #0D1117;
+    color: #E6EDF3;
+}
+window {
+    font-family: "Inter", "Noto Sans", "Ubuntu", sans-serif;
+    font-size: 13px;
+}
+*:selected, selection { background-color: #2B2149; color: #FFFFFF; }
+
+/* ---- header strip: wordmark, tabs, live figures ---- */
+.zt-header {
+    background-color: #010409;
+    border-bottom: 1px solid #262C36;
+    padding: 0 20px;
+}
+.title-label {
+    color: #E6EDF3;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 3px;
+}
+stackswitcher.pill-switcher button {
+    background-color: transparent;
+    color: #9198A1;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 1px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 15px 14px 13px 14px;
+    margin: 0;
+    min-height: 0;
+    min-width: 0;   /* Adwaita forces 100px; tabs should be as wide as their words */
+}
+stackswitcher.pill-switcher button:hover { color: #E6EDF3; }
+stackswitcher.pill-switcher button:checked {
+    color: #E6EDF3;
+    border-bottom-color: #8B5CF6;
+}
+/* Resources sub-pages: GENERAL MEASUREMENTS | POWER CONSUMPTION | TEMPERATURES */
+stackswitcher.zt-subtabs button {
+    background-color: transparent;
+    background-image: none;
+    color: #9198A1;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    border: none;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+    padding: 5px 14px 4px 14px;
+    min-height: 0;
+    min-width: 0;
+}
+stackswitcher.zt-subtabs button + button { border-left: 1px solid #262C36; }
+stackswitcher.zt-subtabs button:first-child { padding-left: 0; }
+stackswitcher.zt-subtabs button:hover { color: #E6EDF3; }
+stackswitcher.zt-subtabs button:checked { color: #E6EDF3; border-bottom-color: #8B5CF6; }
+.zt-stat-key {
+    color: #9198A1;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+.zt-stat-value {
+    color: #E6EDF3;
+    font-size: 13px;
+    font-weight: 600;
+    font-feature-settings: "tnum";
+}
+.zt-stat-value.zt-hot { color: #C3ADFF; font-weight: 700; }
+
+/* ---- toolbar controls (one control vocabulary everywhere) ---- */
+combobox button, button.tree-toggle, dialog button, .props-dialog button {
+    background-color: #161B22;
+    color: #E6EDF3;
+    border: 1px solid #262C36;
+    border-radius: 4px;
+    padding: 3px 10px;
+    min-height: 24px;
+}
+combobox button:hover, button.tree-toggle:hover, dialog button:hover { border-color: #3D444D; }
+button.tree-toggle:checked {
+    background-color: #2B2149;
+    color: #FFFFFF;
+    border-color: #8B5CF6;
+}
+button.zt-icon-btn {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #9198A1;
+    padding: 3px 6px;
+    min-height: 24px;
+}
+button.zt-icon-btn:hover { color: #E6EDF3; border-color: #262C36; }
+button.zt-icon-btn:checked { color: #A78BFA; border-color: #8B5CF6; }
+entry, .search-entry, spinbutton, spinbutton entry {
+    background-color: #161B22;
+    color: #E6EDF3;
+    caret-color: #A78BFA;
+    border: 1px solid #262C36;
+    border-radius: 4px;
+    padding: 3px 10px;
+    min-height: 24px;
+}
+entry:focus, .search-entry:focus { border-color: #8B5CF6; }
+entry image { color: #9198A1; }
+entry selection { background-color: #2B2149; color: #FFFFFF; }
+.zt-count { color: #9198A1; font-size: 12px; font-feature-settings: "tnum"; }
+
+/* ---- tables: departure board ---- */
+treeview.data-table {
+    background-color: #0D1117;
+    color: #E6EDF3;
+    font-size: 13px;
+}
+treeview.data-table:hover { background-color: #161B22; }
+treeview.data-table:selected, treeview.data-table:selected:focus {
+    background-color: #2B2149;
+    color: #FFFFFF;
+}
+treeview.data-table header button {
+    background-color: #0D1117;
+    color: #9198A1;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    border: none;
+    border-bottom: 1px solid #262C36;
+    border-radius: 0;
+    padding: 7px 8px;
+}
+treeview.data-table header button:hover { color: #E6EDF3; }
+treeview.data-table header button arrow { color: #A78BFA; }
+treeview.data-table.expander { color: #9198A1; }
+
+/* ---- scrollbars ---- */
+scrollbar { background-color: transparent; border: none; }
+scrollbar slider {
+    background-color: #3D444D;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    min-width: 6px;
+    min-height: 6px;
+}
+scrollbar slider:hover { background-color: #9198A1; }
+
+/* ---- section labels, meters ---- */
+.section-label {
+    color: #9198A1;
+    font-size: 11px;
+    font-weight: 700;
+}
+.bar-label {
+    color: #9198A1;
+    font-size: 12px;
+    font-feature-settings: "tnum";
+}
+progressbar { color: #9198A1; font-size: 12px; font-feature-settings: "tnum"; }
+progressbar trough {
+    background-color: #161B22;
+    border: none;
+    border-radius: 2px;
+    min-height: 6px;
+}
+progressbar progress { border: none; border-radius: 2px; min-height: 6px; }
+progressbar.cpu-bar progress { background-color: #8B5CF6; }
+progressbar.ram-bar progress { background-color: #A78BFA; }
+progressbar.swap-bar progress { background-color: #F0883E; }
+treeview.data-table progressbar { color: #E6EDF3; }
+treeview.data-table.trough { background-color: #161B22; background-image: none; border: none; }
+treeview.data-table.progressbar { background-color: #8B5CF6; background-image: none; border: none; color: #FFFFFF; }
+treeview.data-table.progressbar:selected, treeview.data-table.progressbar:selected:focus { background-color: #8B5CF6; }
+treeview.data-table.trough:selected, treeview.data-table.trough:selected:focus { background-color: #262C36; }
+.net-recv-label { color: #8B5CF6; font-weight: 600; font-feature-settings: "tnum"; }
+.net-sent-label { color: #F472B6; font-weight: 600; font-feature-settings: "tnum"; }
+
+/* ---- menus, tooltips, dialogs ---- */
+menu, .context-menu {
+    background-color: #1C2128;
+    color: #E6EDF3;
+    border: 1px solid #262C36;
+    padding: 4px 0;
+}
+menuitem { padding: 5px 14px; color: #E6EDF3; }
+menuitem:hover { background-color: #2B2149; color: #FFFFFF; }
+menuitem:disabled, menuitem:disabled label { color: #9198A1; }
+menu separator { background-color: #262C36; min-height: 1px; margin: 4px 0; }
+menuitem radio, menuitem check { color: #A78BFA; }
+tooltip, tooltip.background {
+    background-color: #1C2128;
+    color: #E6EDF3;
+    border: 1px solid #262C36;
+    border-radius: 4px;
+}
+.props-key { color: #9198A1; font-size: 11px; font-weight: 600; }
+.props-value { color: #E6EDF3; font-size: 13px; font-feature-settings: "tnum"; }
+checkbutton check:checked, radiobutton radio:checked {
+    background-color: #8B5CF6;
+    border-color: #8B5CF6;
+    color: #0D1117;
+}
+checkbutton check, radiobutton radio { border: 1px solid #3D444D; background-color: #161B22; }
+
+/* ---- themes tab ---- */
+.zt-theme-row { border-bottom: 1px solid #262C36; padding: 10px 0; }
+.theme-name { color: #E6EDF3; font-weight: 600; font-size: 13px; }
+.theme-desc { color: #9198A1; font-size: 12px; }
+
+/* ---- roles read by the app for things Cairo draws (graphs, treemap,
+        load bands). Only `color` is read; these classes never land on
+        a visible widget. ---- */
+.zt-c-ink { color: #E6EDF3; }
+.zt-c-idle { color: #7D8590; }
+.zt-c-hot { color: #C3ADFF; }
+.zt-c-bg { color: #0D1117; }
+.zt-c-g-bg { color: #10151C; }
+.zt-c-g-grid { color: #1B222C; }
+.zt-c-g-cpu { color: #8B5CF6; }
+.zt-c-g-mem { color: #A78BFA; }
+.zt-c-g-swap { color: #F0883E; }
+.zt-c-g-rx { color: #8B5CF6; }
+.zt-c-g-tx { color: #F472B6; }
+.zt-c-s0 { color: #8B5CF6; }
+.zt-c-s1 { color: #F472B6; }
+.zt-c-s2 { color: #3FB950; }
+.zt-c-s3 { color: #D29922; }
+.zt-c-s4 { color: #58A6FF; }
+.zt-c-s5 { color: #F85149; }
+.zt-c-s6 { color: #A78BFA; }
+.zt-c-s7 { color: #DB61A2; }

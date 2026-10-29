@@ -40,11 +40,26 @@ public class PieTab : Gtk.Box {
         var slices = new Slice[top + (with_others ? 1 : 0)];
         for (int i = 0; i < top; i++) slices[i] = scored[i];
         if (with_others) slices[top] = new Slice("Others (%d)".printf(scored.size - top), others);
+        // same names and the same one-decimal percentages = same picture
+        string key = slices_key(slices);
+        if (key == last_key) return;
+        last_key = key;
         pie.set_slices(slices);
         legend.update(slices);
     }
 
+    private string last_key = "";
+
+    private static string slices_key(Slice[] slices) {
+        double total = 0;
+        foreach (var sl in slices) total += sl.value;
+        var b = new StringBuilder();
+        foreach (var sl in slices) b.append_printf("%s\x1f%.0f\x1e", sl.label, total > 0 ? sl.value / total * 1000 : 0);
+        return b.str;
+    }
+
     public void redraw() {
+        last_key = "";
         pie.queue_draw();
         legend.redraw_swatches();
     }

@@ -60,7 +60,7 @@ public class HistoryGraph : Gtk.DrawingArea {
         if (auto_scale) {
             double m = 0;
             for (int s = 0; s < roles.length; s++)
-                for (int i = 0; i < count; i++) m = double.max(m, at(s, i));
+                for (int i = 0; i < count; i++) { double v = at(s, i); if (v > m) m = v; }
             top = double.max(m * 1.25, 1);
         }
         double step = (double) w / (HISTORY_LEN - 1);
@@ -69,19 +69,23 @@ public class HistoryGraph : Gtk.DrawingArea {
 
         for (int s = 0; s < roles.length; s++) {
             var c = theme.get_role(roles[s]);
-            cr.move_to(x0, h);
-            for (int i = 0; i < count; i++) cr.line_to(x0 + i * step, h - double.min(at(s, i), top) * scale);
-            cr.line_to(x0 + (count - 1) * step, h);
-            cr.close_path();
-            set_rgb(cr, c, 0.16);
-            cr.fill();
+            // one path for both: stroke the line, then close it down to the
+            // baseline and fill (fill_preserve isn't needed, order is cheaper)
+            cr.new_path();
             for (int i = 0; i < count; i++) {
-                double x = x0 + i * step, y = h - double.min(at(s, i), top) * scale;
+                double v = at(s, i);
+                if (v > top) v = top;
+                double x = x0 + i * step, y = h - v * scale;
                 if (i == 0) cr.move_to(x, y); else cr.line_to(x, y);
             }
             set_rgb(cr, c);
             cr.set_line_width(1.5);
-            cr.stroke();
+            cr.stroke_preserve();
+            cr.line_to(x0 + (count - 1) * step, h);
+            cr.line_to(x0, h);
+            cr.close_path();
+            set_rgb(cr, c, 0.16);
+            cr.fill();
         }
         return false;
     }

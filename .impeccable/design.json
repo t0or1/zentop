@@ -1,0 +1,722 @@
+{
+ "schemaVersion": 2,
+ "generatedAt": "2026-10-29T12:13:44.771091Z",
+ "title": "Design System: zentop",
+ "extensions": {
+  "colorMeta": {
+   "ground": {
+    "role": "neutral",
+    "displayName": "Ground",
+    "tonalRamp": [
+     "#1C2431",
+     "#2E3C51",
+     "#405472",
+     "#536C93",
+     "#6C86AC",
+     "#97A9C4",
+     "#C4CFDE",
+     "#EFF2F6"
+    ]
+   },
+   "strip": {
+    "role": "neutral",
+    "displayName": "Strip",
+    "tonalRamp": [
+     "#081F45",
+     "#0D3373",
+     "#1247A1",
+     "#175CCF",
+     "#3075E8",
+     "#6C9DEF",
+     "#ACC8F6",
+     "#E8F0FC"
+    ]
+   },
+   "surface": {
+    "role": "neutral",
+    "displayName": "Surface",
+    "tonalRamp": [
+     "#1E252E",
+     "#323D4D",
+     "#46566C",
+     "#5A6F8B",
+     "#7488A5",
+     "#9CAABF",
+     "#C7CFDB",
+     "#F0F2F5"
+    ]
+   },
+   "raised": {
+    "role": "neutral",
+    "displayName": "Raised",
+    "tonalRamp": [
+     "#1F252D",
+     "#343E4B",
+     "#4A5769",
+     "#5E6F87",
+     "#7889A1",
+     "#9FABBC",
+     "#C9D0D9",
+     "#F0F2F4"
+    ]
+   },
+   "rule": {
+    "role": "neutral",
+    "displayName": "Rule",
+    "tonalRamp": [
+     "#20252D",
+     "#353D4B",
+     "#4A5569",
+     "#5F6E87",
+     "#7887A0",
+     "#9FAABC",
+     "#C9CFD9",
+     "#F0F2F4"
+    ]
+   },
+   "rule-strong": {
+    "role": "neutral",
+    "displayName": "Rule Strong",
+    "tonalRamp": [
+     "#22262B",
+     "#383F47",
+     "#4F5864",
+     "#657180",
+     "#7F8B9A",
+     "#A4ACB7",
+     "#CCD0D6",
+     "#F1F2F4"
+    ]
+   },
+   "ink": {
+    "role": "neutral",
+    "displayName": "Ink",
+    "tonalRamp": [
+     "#192734",
+     "#294156",
+     "#3A5C79",
+     "#4A769B",
+     "#648FB5",
+     "#91B0CA",
+     "#C1D2E1",
+     "#EEF3F7"
+    ]
+   },
+   "ink-dim": {
+    "role": "neutral",
+    "displayName": "Ink Dim",
+    "tonalRamp": [
+     "#232629",
+     "#3B3F45",
+     "#525860",
+     "#6A727C",
+     "#838B95",
+     "#A7ADB4",
+     "#CDD1D5",
+     "#F1F2F3"
+    ]
+   },
+   "ink-idle": {
+    "role": "neutral",
+    "displayName": "Ink Idle",
+    "tonalRamp": [
+     "#232629",
+     "#3B3F45",
+     "#525860",
+     "#6A717C",
+     "#838B95",
+     "#A7ACB4",
+     "#CDD1D5",
+     "#F1F2F3"
+    ]
+   },
+   "accent": {
+    "role": "primary",
+    "displayName": "Accent",
+    "tonalRamp": [
+     "#150349",
+     "#23057A",
+     "#3107AB",
+     "#3F09DC",
+     "#5823F6",
+     "#8863F8",
+     "#BCA7FB",
+     "#ECE7FE"
+    ]
+   },
+   "fill": {
+    "role": "primary",
+    "displayName": "Fill",
+    "tonalRamp": [
+     "#190448",
+     "#2A0779",
+     "#3A09A9",
+     "#4B0CD9",
+     "#6426F3",
+     "#9164F6",
+     "#C1A8FA",
+     "#EEE7FE"
+    ]
+   },
+   "hot": {
+    "role": "primary",
+    "displayName": "Hot",
+    "tonalRamp": [
+     "#15004C",
+     "#220080",
+     "#3000B2",
+     "#3E00E6",
+     "#571AFF",
+     "#885CFF",
+     "#BCA3FF",
+     "#ECE5FF"
+    ]
+   },
+   "selection": {
+    "role": "neutral",
+    "displayName": "Selection",
+    "tonalRamp": [
+     "#1F1835",
+     "#342858",
+     "#48387B",
+     "#5D479E",
+     "#7761B8",
+     "#9E8FCC",
+     "#C8C0E2",
+     "#F0EDF7"
+    ]
+   },
+   "selection-ink": {
+    "role": "neutral",
+    "displayName": "Selection Ink",
+    "tonalRamp": [
+     "#262626",
+     "#404040",
+     "#595959",
+     "#737373",
+     "#8C8C8C",
+     "#ADADAD",
+     "#D1D1D1",
+     "#F2F2F2"
+    ]
+   },
+   "graph-ground": {
+    "role": "data",
+    "displayName": "Graph Ground",
+    "tonalRamp": [
+     "#1C2531",
+     "#2E3D51",
+     "#415572",
+     "#536E92",
+     "#6D87AC",
+     "#97AAC4",
+     "#C5CFDE",
+     "#EFF2F6"
+    ]
+   },
+   "graph-grid": {
+    "role": "data",
+    "displayName": "Graph Grid",
+    "tonalRamp": [
+     "#1D252F",
+     "#303D4F",
+     "#44556F",
+     "#576E8E",
+     "#7187A8",
+     "#9AAAC1",
+     "#C6CFDC",
+     "#EFF2F5"
+    ]
+   },
+   "graph-cpu": {
+    "role": "data",
+    "displayName": "Graph Cpu",
+    "tonalRamp": [
+     "#190448",
+     "#2A0779",
+     "#3A09A9",
+     "#4B0CD9",
+     "#6426F3",
+     "#9164F6",
+     "#C1A8FA",
+     "#EEE7FE"
+    ]
+   },
+   "graph-mem": {
+    "role": "data",
+    "displayName": "Graph Mem",
+    "tonalRamp": [
+     "#150349",
+     "#23057A",
+     "#3107AB",
+     "#3F09DC",
+     "#5823F6",
+     "#8863F8",
+     "#BCA7FB",
+     "#ECE7FE"
+    ]
+   },
+   "graph-swap": {
+    "role": "data",
+    "displayName": "Graph Swap",
+    "tonalRamp": [
+     "#472106",
+     "#763709",
+     "#A64C0D",
+     "#D56211",
+     "#EE7C2A",
+     "#F3A268",
+     "#F8CAAA",
+     "#FDF0E7"
+    ]
+   },
+   "graph-rx": {
+    "role": "data",
+    "displayName": "Graph Rx",
+    "tonalRamp": [
+     "#190448",
+     "#2A0779",
+     "#3A09A9",
+     "#4B0CD9",
+     "#6426F3",
+     "#9164F6",
+     "#C1A8FA",
+     "#EEE7FE"
+    ]
+   },
+   "graph-tx": {
+    "role": "data",
+    "displayName": "Graph Tx",
+    "tonalRamp": [
+     "#470628",
+     "#760942",
+     "#A60D5D",
+     "#D51177",
+     "#EE2A91",
+     "#F368B1",
+     "#F8AAD3",
+     "#FDE7F3"
+    ]
+   },
+   "series-0": {
+    "role": "data",
+    "displayName": "Series 0",
+    "tonalRamp": [
+     "#190448",
+     "#2A0779",
+     "#3A09A9",
+     "#4B0CD9",
+     "#6426F3",
+     "#9164F6",
+     "#C1A8FA",
+     "#EEE7FE"
+    ]
+   },
+   "series-1": {
+    "role": "data",
+    "displayName": "Series 1",
+    "tonalRamp": [
+     "#470628",
+     "#760942",
+     "#A60D5D",
+     "#D51177",
+     "#EE2A91",
+     "#F368B1",
+     "#F8AAD3",
+     "#FDE7F3"
+    ]
+   },
+   "series-2": {
+    "role": "data",
+    "displayName": "Series 2",
+    "tonalRamp": [
+     "#133919",
+     "#205F29",
+     "#2D853A",
+     "#3AAB4A",
+     "#54C564",
+     "#85D690",
+     "#BBE8C1",
+     "#ECF9EE"
+    ]
+   },
+   "series-3": {
+    "role": "data",
+    "displayName": "Series 3",
+    "tonalRamp": [
+     "#42300B",
+     "#6E5012",
+     "#9A7019",
+     "#C69020",
+     "#DFA939",
+     "#E8C273",
+     "#F2DDB0",
+     "#FBF5E9"
+    ]
+   },
+   "series-4": {
+    "role": "data",
+    "displayName": "Series 4",
+    "tonalRamp": [
+     "#00244C",
+     "#003C80",
+     "#0053B2",
+     "#006BE6",
+     "#1A85FF",
+     "#5CA8FF",
+     "#A3CEFF",
+     "#E5F1FF"
+    ]
+   },
+   "series-5": {
+    "role": "data",
+    "displayName": "Series 5",
+    "tonalRamp": [
+     "#4A0603",
+     "#7B0A05",
+     "#AC0E07",
+     "#DD1208",
+     "#F62C22",
+     "#F96962",
+     "#FCAAA7",
+     "#FEE8E6"
+    ]
+   },
+   "series-6": {
+    "role": "data",
+    "displayName": "Series 6",
+    "tonalRamp": [
+     "#150349",
+     "#23057A",
+     "#3107AB",
+     "#3F09DC",
+     "#5823F6",
+     "#8863F8",
+     "#BCA7FB",
+     "#ECE7FE"
+    ]
+   },
+   "series-7": {
+    "role": "data",
+    "displayName": "Series 7",
+    "tonalRamp": [
+     "#3E0E28",
+     "#681842",
+     "#91215D",
+     "#BB2B77",
+     "#D44491",
+     "#E17AB1",
+     "#EEB4D3",
+     "#FAEAF3"
+    ]
+   }
+  },
+  "typographyMeta": {
+   "wordmark": {
+    "displayName": "Wordmark",
+    "purpose": "ZENTOP in the header strip only."
+   },
+   "tab": {
+    "displayName": "Tab",
+    "purpose": "Header tabs."
+   },
+   "body": {
+    "displayName": "Body",
+    "purpose": "Names and copy."
+   },
+   "figure": {
+    "displayName": "Figure",
+    "purpose": "Every number; tabular."
+   },
+   "label": {
+    "displayName": "Section label",
+    "purpose": "Section heads, uppercase dim."
+   },
+   "column-head": {
+    "displayName": "Column head",
+    "purpose": "Table header buttons."
+   }
+  },
+  "shadows": [],
+  "motion": [
+   {
+    "name": "none",
+    "value": "0ms",
+    "purpose": "No transitions anywhere: render cost."
+   }
+  ],
+  "themes": {
+   "default": {
+    "ground": "#0D1117",
+    "strip": "#010409",
+    "surface": "#161B22",
+    "raised": "#1C2128",
+    "rule": "#262C36",
+    "rule-strong": "#3D444D",
+    "ink": "#E6EDF3",
+    "ink-dim": "#9198A1",
+    "ink-idle": "#7D8590",
+    "accent": "#A78BFA",
+    "fill": "#8B5CF6",
+    "hot": "#C3ADFF",
+    "selection": "#2B2149",
+    "selection-ink": "#FFFFFF",
+    "graph-ground": "#10151C",
+    "graph-grid": "#1B222C",
+    "graph-cpu": "#8B5CF6",
+    "graph-mem": "#A78BFA",
+    "graph-swap": "#F0883E",
+    "graph-rx": "#8B5CF6",
+    "graph-tx": "#F472B6",
+    "series": [
+     "#8B5CF6",
+     "#F472B6",
+     "#3FB950",
+     "#D29922",
+     "#58A6FF",
+     "#F85149",
+     "#A78BFA",
+     "#DB61A2"
+    ]
+   },
+   "eva01": {
+    "ground": "#0F0A1F",
+    "strip": "#0A0616",
+    "surface": "#1A1230",
+    "raised": "#211740",
+    "rule": "#2E2150",
+    "rule-strong": "#4A3878",
+    "ink": "#ECE6F7",
+    "ink-dim": "#A99BC6",
+    "ink-idle": "#8D7FB0",
+    "accent": "#8CFF6B",
+    "fill": "#7B2FD9",
+    "hot": "#A6FF8C",
+    "selection": "#3A2466",
+    "selection-ink": "#FFFFFF",
+    "graph-ground": "#130D26",
+    "graph-grid": "#22183C",
+    "graph-cpu": "#8CFF6B",
+    "graph-mem": "#A77BFF",
+    "graph-swap": "#FF4D5E",
+    "graph-rx": "#8CFF6B",
+    "graph-tx": "#A77BFF",
+    "series": [
+     "#7B2FD9",
+     "#8CFF6B",
+     "#FF4D5E",
+     "#A77BFF",
+     "#5BE37D",
+     "#FF8A3D",
+     "#C9A8FF",
+     "#3FC99A"
+    ]
+   },
+   "magi": {
+    "ground": "#070604",
+    "strip": "#0E0B06",
+    "surface": "#130F08",
+    "raised": "#1A140A",
+    "rule": "#2C2210",
+    "rule-strong": "#4A3816",
+    "ink": "#FFB000",
+    "ink-dim": "#C98C10",
+    "ink-idle": "#A8780F",
+    "accent": "#FFB000",
+    "fill": "#FFB000",
+    "hot": "#FFE6A8",
+    "selection": "#3A2A08",
+    "selection-ink": "#FFE6A8",
+    "graph-ground": "#0B0906",
+    "graph-grid": "#1E170B",
+    "graph-cpu": "#FFB000",
+    "graph-mem": "#FFCC66",
+    "graph-swap": "#FF5A1F",
+    "graph-rx": "#FFB000",
+    "graph-tx": "#FFCC66",
+    "series": [
+     "#FFB000",
+     "#FF8A00",
+     "#FFCC66",
+     "#FF5A1F",
+     "#E0A030",
+     "#FFDD99",
+     "#C07800",
+     "#FF7040"
+    ]
+   },
+   "eva00": {
+    "ground": "#0A1420",
+    "strip": "#07101A",
+    "surface": "#12202F",
+    "raised": "#172838",
+    "rule": "#213448",
+    "rule-strong": "#33506C",
+    "ink": "#E3F0F8",
+    "ink-dim": "#9DB4C6",
+    "ink-idle": "#7F98AC",
+    "accent": "#FF8C1A",
+    "fill": "#FF8C1A",
+    "hot": "#FFA347",
+    "selection": "#1F3A52",
+    "selection-ink": "#FFFFFF",
+    "graph-ground": "#0D1826",
+    "graph-grid": "#1A2A3B",
+    "graph-cpu": "#FF8C1A",
+    "graph-mem": "#7FD4F0",
+    "graph-swap": "#E4572E",
+    "graph-rx": "#FF8C1A",
+    "graph-tx": "#7FD4F0",
+    "series": [
+     "#FF8C1A",
+     "#7FD4F0",
+     "#E4572E",
+     "#4FA8D8",
+     "#FFB766",
+     "#B8E4F5",
+     "#D9722B",
+     "#2F86B8"
+    ]
+   },
+   "eva02": {
+    "ground": "#150808",
+    "strip": "#0E0505",
+    "surface": "#221010",
+    "raised": "#2A1414",
+    "rule": "#3A1A17",
+    "rule-strong": "#5A2A24",
+    "ink": "#F7EADF",
+    "ink-dim": "#C9A595",
+    "ink-idle": "#AD8A7E",
+    "accent": "#FF6A52",
+    "fill": "#E8412C",
+    "hot": "#FFD23F",
+    "selection": "#4A1A14",
+    "selection-ink": "#FFFFFF",
+    "graph-ground": "#1A0B0A",
+    "graph-grid": "#2E1512",
+    "graph-cpu": "#E8412C",
+    "graph-mem": "#F4C95D",
+    "graph-swap": "#FFD23F",
+    "graph-rx": "#E8412C",
+    "graph-tx": "#F4C95D",
+    "series": [
+     "#E8412C",
+     "#F4C95D",
+     "#FF8A3D",
+     "#FFD23F",
+     "#B8301F",
+     "#F7EADF",
+     "#D9643A",
+     "#C99A3A"
+    ]
+   },
+   "pastel": {
+    "ground": "#FDF0F5",
+    "strip": "#F8DCE8",
+    "surface": "#FBE6EF",
+    "raised": "#FFF7FA",
+    "rule": "#EBC6D7",
+    "rule-strong": "#D9A3BD",
+    "ink": "#3D1428",
+    "ink-dim": "#7A4A62",
+    "ink-idle": "#8C6178",
+    "accent": "#B0105A",
+    "fill": "#E85CA6",
+    "hot": "#B0105A",
+    "selection": "#F2A6CB",
+    "selection-ink": "#3D1428",
+    "graph-ground": "#FBE6EF",
+    "graph-grid": "#F0D2E0",
+    "graph-cpu": "#E85CA6",
+    "graph-mem": "#9C6FC7",
+    "graph-swap": "#E8796D",
+    "graph-rx": "#E85CA6",
+    "graph-tx": "#9C6FC7",
+    "series": [
+     "#E85CA6",
+     "#9C6FC7",
+     "#E8796D",
+     "#5FA8C9",
+     "#D94B8C",
+     "#B48ED6",
+     "#F0A35E",
+     "#4E9C86"
+    ]
+   }
+  }
+ },
+ "components": [
+  {
+   "name": "Header Tab",
+   "kind": "nav",
+   "refersTo": "tab",
+   "description": "Underlined uppercase tab in the header strip.",
+   "html": "<nav class=\"ds-strip\"><span class=\"ds-mark\">ZENTOP</span><a class=\"ds-tab ds-on\">PROCESSES</a><a class=\"ds-tab\">RESOURCES</a></nav>",
+   "css": ".ds-strip{background:#010409;border-bottom:1px solid #262C36;display:flex;align-items:center;gap:4px;padding:0 20px;height:48px;font-family:Inter,sans-serif} .ds-mark{color:#E6EDF3;font-weight:800;font-size:14px;letter-spacing:3px;margin-right:24px} .ds-tab{color:#9198A1;font-size:12px;font-weight:600;letter-spacing:1px;padding:15px 14px 13px;border-bottom:2px solid transparent;cursor:pointer} .ds-tab:hover{color:#E6EDF3} .ds-tab.ds-on{color:#E6EDF3;border-bottom-color:#A78BFA}"
+  },
+  {
+   "name": "Control",
+   "kind": "input",
+   "refersTo": "control",
+   "description": "Shared recipe for entries, combos and buttons.",
+   "html": "<input class=\"ds-control\" placeholder=\"Filter by process name...\">",
+   "css": ".ds-control{background:#161B22;color:#E6EDF3;border:1px solid #262C36;border-radius:4px;padding:3px 10px;min-height:24px;font:13px Inter,sans-serif} .ds-control:focus-visible{outline:none;border-color:#A78BFA}"
+  },
+  {
+   "name": "Load-band Row",
+   "kind": "custom",
+   "refersTo": "table-cell",
+   "description": "Idle / normal / hot figures in one table row.",
+   "html": "<table class=\"ds-tt\"><tr><td>yes</td><td class=\"ds-hot\">99.0%</td><td class=\"ds-idle\">1.6MB</td></tr><tr><td>kthreadd</td><td class=\"ds-idle\">0.0%</td><td class=\"ds-idle\">0.0B</td></tr></table>",
+   "css": ".ds-tt{background:#0D1117;color:#E6EDF3;font:13px Inter,sans-serif;font-variant-numeric:tabular-nums;border-collapse:collapse} .ds-tt td{padding:3px 8px;text-align:right} .ds-tt td:first-child{text-align:left} .ds-hot{color:#C3ADFF;font-weight:700} .ds-idle{color:#7D8590}"
+  },
+  {
+   "name": "Meter",
+   "kind": "custom",
+   "refersTo": "meter",
+   "description": "Thin 6px bar for cores, memory and disk use.",
+   "html": "<div class=\"ds-meter\"><div style=\"width:62%\"></div></div>",
+   "css": ".ds-meter{background:#161B22;height:6px;border-radius:2px;width:240px} .ds-meter>div{background:#8B5CF6;height:6px;border-radius:2px}"
+  }
+ ],
+ "narrative": {
+  "northStar": "The Departure Board",
+  "overview": "zentop reads like a Japanese railway timetable: tabular figures, hairline rules, a one-line header strip, and load shown through type. Six themes fill one set of roles, so identity changes and behaviour never does.",
+  "keyCharacteristics": [
+   "Tabular figures everywhere a number appears (Inter tnum).",
+   "Load bands: values are typeset idle, normal or hot instead of being uniformly grey.",
+   "One-line header strip with underlined tabs instead of a big title and pills.",
+   "Hairline 1px rules; no shadows, gradients or transitions.",
+   "The app reads the colours from the theme CSS (.zt-c-<role>), so Cairo graphs follow the theme with no hard-coded palettes."
+  ],
+  "rules": [
+   {
+    "name": "The Load Band Rule",
+    "section": "colors",
+    "body": "CPU below 0.5% and memory below 0.5% use idle ink; CPU from 20% and memory from 5% use hot ink at weight 700. Zero disk rates use idle ink."
+   },
+   {
+    "name": "The Role Rule",
+    "section": "colors",
+    "body": "Code never names a hex value; the code asks the stylesheet for a role."
+   },
+   {
+    "name": "The Tracking Rule",
+    "section": "typography",
+    "body": "Letter-spacing only on single-line uppercase strings in fixed-height containers."
+   }
+  ],
+  "dos": [
+   "Do add a theme by writing one CSS file that fills every role, .zt-c-* included.",
+   "Do keep numbers in tabular figures and let weight and colour carry load.",
+   "Do update widgets by setting text or values; build them once."
+  ],
+  "donts": [
+   "Don't add transitions, box-shadow, gradients or text-shadow; they cost frame time.",
+   "Don't hard-code colours in the code.",
+   "Don't use letter-spacing on free-standing labels that contain spaces.",
+   "Don't use per-cell cell_data_func on the process table."
+  ]
+ }
+}

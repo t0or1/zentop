@@ -139,9 +139,15 @@ public class FilesystemsTab : Gtk.Box {
         }
         if (!store.get_iter_first(out it)) return;
         foreach (var p in parts) {
-            store.set(it, 0, p.device, 1, p.mountpoint, 2, p.fstype,
-                      3, Fmt.bytes((int64) p.total), 4, Fmt.bytes((int64) p.used),
-                      5, Fmt.bytes((int64) p.free), 6, (int) p.percent, -1);
+            // unchanged figures = no write: a write redraws (and re-measures) the row
+            string used = Fmt.bytes((int64) p.used), free = Fmt.bytes((int64) p.free);
+            Value old_used, old_free, old_pct;
+            store.get_value(it, 4, out old_used);
+            store.get_value(it, 5, out old_free);
+            store.get_value(it, 6, out old_pct);
+            if (!same || (string?) old_used != used || (string?) old_free != free || (int) old_pct != (int) p.percent)
+                store.set(it, 0, p.device, 1, p.mountpoint, 2, p.fstype,
+                          3, Fmt.bytes((int64) p.total), 4, used, 5, free, 6, (int) p.percent, -1);
             store.iter_next(ref it);
         }
     }

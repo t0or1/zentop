@@ -1,7 +1,9 @@
-/* resources_data.vala -- CPU / memory / network figures read straight from
- * /proc, no libraries. Each sample is one small file read, so it stays on
- * the main thread (same call the Python version makes with psutil).
- * The maths mirror psutil, so both versions show the same numbers. */
+/* resources_data.vala -- CPU / memory / network figures from /proc, with the
+ * maths psutil uses, so both versions show the same numbers. Each file is
+ * kept open and re-read with pread, then parsed in place: no line splitting,
+ * no per-field strings. /proc/stat is read only as far as the cpu lines (its
+ * "intr" line alone can be several KB). One sampler is shared by the header
+ * and the Resources tab, so nothing is read twice in the same second. */
 
 public struct CpuTimes {
     public uint64 busy;
@@ -18,9 +20,15 @@ public class MemSnapshot {
 }
 
 public class ResourcesSampler : Object {
+    private ProcReader stat_file;
+    private ProcReader mem_file = new ProcReader("/proc/meminfo", 8192);
+    private ProcReader net_file = new ProcReader("/proc/net/dev", 8192);
+
     private CpuTimes prev_total = CpuTimes();
     private CpuTimes[] prev_cores = new CpuTimes[0];
+    private CpuTimes[] now_cores = new CpuTimes[0];
     private bool have_cpu = false;
+    private int64 cpu_sampled_us = 0;
 
     private uint64 prev_rx = 0;
     private uint64 prev_tx = 0;
@@ -30,90 +38,100 @@ public class ResourcesSampler : Object {
     public double[] cpu_cores = new double[0];
     public double rx_rate = 0;          // bytes/s
     public double tx_rate = 0;
+    public MemSnapshot mem = new MemSnapshot();
 
-    private static string? read_proc(string path) {
-        string data;
-        try {
-            FileUtils.get_contents(path, out data);
-        } catch (Error e) {
-            return null;
-        }
-        return data;
+    public ResourcesSampler() {
+        // "cpu" + one line per core, ~100 bytes each, plus slack
+        stat_file = new ProcReader("/proc/stat", 512 + 128 * (int) GLib.get_num_processors());
     }
 
     /* "cpu  user nice system idle iowait irq softirq steal guest guest_nice".
      * guest time is already counted inside user, so it's left out of the
      * total; idle + iowait count as not-busy (psutil does the same). */
-    private static CpuTimes parse_cpu_line(string line) {
+    private static CpuTimes parse_cpu(ref Scan s) {
         var t = CpuTimes();
-        string[] f = line.split_set(" ", 0);
-        uint64[] v = new uint64[8];
-        int n = 0;
-        for (int i = 1; i < f.length && n < 8; i++) {
-            if (f[i] == "") continue;
-            v[n++] = uint64.parse(f[i]);
+        uint64 idle = 0;
+        for (int f = 0; f < 8; f++) {
+            int64 v = s.next_uint();
+            if (v < 0) break;
+            t.total += v;
+            if (f == 3 || f == 4) idle += v;
         }
-        uint64 idle = v[3] + v[4];
-        uint64 total = 0;
-        for (int i = 0; i < 8; i++) total += v[i];
-        t.total = total;
-        t.busy = total - idle;
+        t.busy = t.total - idle;
         return t;
     }
 
     private static double pct(CpuTimes now, CpuTimes before) {
-        uint64 dt = now.total - before.total;
-        if (dt == 0 || now.total < before.total) return 0;
-        double p = (double) (now.busy - before.busy) / (double) dt * 100.0;
+        if (now.total <= before.total) return 0;
+        double p = (double) (now.busy - before.busy) / (double) (now.total - before.total) * 100.0;
         return p.clamp(0, 100);
     }
 
-    public void sample_cpu() {
-        string? data = read_proc("/proc/stat");
-        if (data == null) return;
+    /* Skips the read if the last sample is younger than `min_age_ms`, so the
+     * header and the Resources tab can both ask in the same tick. */
+    public void sample_cpu(int min_age_ms = 0) {
+        int64 now_us = get_monotonic_time();
+        if (have_cpu && now_us - cpu_sampled_us < min_age_ms * 1000) return;
+        if (!stat_file.read()) return;
+        cpu_sampled_us = now_us;
+        var s = Scan(stat_file);
         CpuTimes total = CpuTimes();
-        var cores = new Gee.ArrayList<CpuTimes?>();
-        foreach (unowned string line in data.split("\n")) {
-            if (!line.has_prefix("cpu")) break;  // cpu lines are always first
-            if (line.has_prefix("cpu ")) total = parse_cpu_line(line);
-            else cores.add(parse_cpu_line(line));
+        int cores = 0;
+        while (!s.at_end() && s.starts_with("cpu")) {
+            bool aggregate = s.starts_with("cpu ");
+            s.skip(3);
+            if (!aggregate) s.next_uint();  // the core number
+            var t = parse_cpu(ref s);
+            if (aggregate) total = t;
+            else {
+                if (cores >= now_cores.length) now_cores.resize(cores + 1);
+                now_cores[cores] = t;
+                cores++;
+            }
+            s.next_line();
         }
-        if (prev_cores.length != cores.size) {
-            prev_cores = new CpuTimes[cores.size];
-            cpu_cores = new double[cores.size];
+        if (prev_cores.length != cores) {
+            prev_cores = new CpuTimes[cores];
+            cpu_cores = new double[cores];
             have_cpu = false;
         }
         if (have_cpu) cpu_total = pct(total, prev_total);
-        for (int i = 0; i < cores.size; i++) {
-            if (have_cpu) cpu_cores[i] = pct(cores[i], prev_cores[i]);
-            prev_cores[i] = cores[i];
+        for (int i = 0; i < cores; i++) {
+            if (have_cpu) cpu_cores[i] = pct(now_cores[i], prev_cores[i]);
+            prev_cores[i] = now_cores[i];
         }
         prev_total = total;
         have_cpu = true;
     }
 
     public MemSnapshot sample_memory() {
+        if (!mem_file.read()) return mem;
         var m = new MemSnapshot();
-        string? data = read_proc("/proc/meminfo");
-        if (data == null) return m;
         uint64 free = 0, available = 0, buffers = 0, cached = 0, reclaimable = 0, swap_free = 0;
         bool have_available = false;
-        foreach (unowned string line in data.split("\n")) {
-            int colon = line.index_of_char(':');
-            if (colon < 0) continue;
-            string key = line.substring(0, colon);
-            uint64 kb = uint64.parse(line.substring(colon + 1).strip().split(" ")[0]);
-            uint64 b = kb * 1024;
-            switch (key) {
-                case "MemTotal": m.total = b; break;
-                case "MemFree": free = b; break;
-                case "MemAvailable": available = b; have_available = true; break;
-                case "Buffers": buffers = b; break;
-                case "Cached": cached = b; break;
-                case "SReclaimable": reclaimable = b; break;
-                case "SwapTotal": m.swap_total = b; break;
-                case "SwapFree": swap_free = b; break;
+        var s = Scan(mem_file);
+        while (!s.at_end()) {
+            int key_at = s.i;
+            if (!s.skip_past(':')) { s.next_line(); continue; }
+            int64 kb = s.next_uint();   // not inside max(): Vala emits MAX(), which evaluates twice
+            uint64 b = kb > 0 ? (uint64) kb * 1024 : 0;
+            // compare the key in place: first byte, then the rest
+            unowned uint8[] k = s.b;
+            switch (k[key_at]) {
+                case 'M':
+                    if (key_is(k, key_at, "MemTotal:")) m.total = b;
+                    else if (key_is(k, key_at, "MemFree:")) free = b;
+                    else if (key_is(k, key_at, "MemAvailable:")) { available = b; have_available = true; }
+                    break;
+                case 'B': if (key_is(k, key_at, "Buffers:")) buffers = b; break;
+                case 'C': if (key_is(k, key_at, "Cached:")) cached = b; break;
+                case 'S':
+                    if (key_is(k, key_at, "SReclaimable:")) reclaimable = b;
+                    else if (key_is(k, key_at, "SwapTotal:")) m.swap_total = b;
+                    else if (key_is(k, key_at, "SwapFree:")) swap_free = b;
+                    break;
             }
+            s.next_line();
         }
         uint64 cache_all = cached + reclaimable;
         uint64 not_used = free + buffers + cache_all;
@@ -122,25 +140,29 @@ public class ResourcesSampler : Object {
         m.percent = m.total > 0 ? (double) (m.total - available) / (double) m.total * 100.0 : 0;
         m.swap_used = m.swap_total - swap_free;
         m.swap_percent = m.swap_total > 0 ? (double) m.swap_used / (double) m.swap_total * 100.0 : 0;
+        mem = m;
         return m;
+    }
+
+    private static bool key_is(uint8[] b, int at, string key) {
+        for (int k = 0; k < key.length; k++) if (b[at + k] != key[k]) return false;
+        return true;
     }
 
     /* Sums every interface (lo included), same as psutil.net_io_counters(). */
     public void sample_network() {
-        string? data = read_proc("/proc/net/dev");
-        if (data == null) return;
+        if (!net_file.read()) return;
         uint64 rx = 0, tx = 0;
-        foreach (unowned string line in data.split("\n")) {
-            int colon = line.index_of_char(':');
-            if (colon < 0) continue;
-            string[] f = line.substring(colon + 1).split_set(" ", 0);
-            int n = 0;
-            foreach (unowned string s in f) {
-                if (s == "") continue;
-                if (n == 0) rx += uint64.parse(s);
-                else if (n == 8) { tx += uint64.parse(s); break; }
-                n++;
+        var s = Scan(net_file);
+        while (!s.at_end()) {
+            if (s.skip_past(':')) {
+                int64 r = s.next_uint();
+                for (int f = 0; f < 7; f++) s.next_uint();
+                int64 t = s.next_uint();
+                if (r > 0) rx += r;
+                if (t > 0) tx += t;
             }
+            s.next_line();
         }
         int64 now = get_monotonic_time();
         if (prev_net_us != 0) {

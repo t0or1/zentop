@@ -1,10 +1,10 @@
 /* tab_resources.vala -- CPU (total + per core), memory, swap and network,
  * each a live figure, a history graph and bars. Sampled only while the
- * tab is visible. */
+ * tab is visible, through the sampler it shares with the header. */
 
 public class ResourcesTab : Gtk.ScrolledWindow {
     private AppContext ctx;
-    private ResourcesSampler sampler = new ResourcesSampler();
+    private ResourcesSampler sampler;
     private HistoryGraph cpu_graph;
     private HistoryGraph mem_graph;
     private HistoryGraph net_graph;
@@ -21,12 +21,11 @@ public class ResourcesTab : Gtk.ScrolledWindow {
     public ResourcesTab(AppContext ctx) {
         Object(hadjustment: null, vadjustment: null);
         this.ctx = ctx;
+        sampler = ctx.sampler;
         vexpand = true;
         var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 10);
         Ui.margins(box, 20, 20, 16, 24);
         add(box);
-        sampler.sample_cpu();     // prime the deltas so the first tick is real
-        sampler.sample_network();
 
         // CPU: the figure, its history, then the per-core board
         Ui.section_header(box, "CPU", 0, ctx.tnum, out cpu_value);

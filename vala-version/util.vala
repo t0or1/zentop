@@ -65,10 +65,14 @@ public class AppContext : Object {
     public string? pin_icon = null;
     public uint64 total_mem = 1;
     public unowned Gtk.Window window;
+    // one reader of /proc/stat, meminfo and net/dev for the header and Resources
+    public ResourcesSampler sampler = new ResourcesSampler();
 
-    public AppContext(Gtk.Window window, uint64 total_mem) {
+    public AppContext(Gtk.Window window) {
         this.window = window;
-        this.total_mem = uint64.max(total_mem, 1);
+        sampler.sample_cpu();   // prime the deltas
+        sampler.sample_network();
+        total_mem = uint64.max(sampler.sample_memory().total, 1);
         current_user = Environment.get_user_name();
         tnum = new Pango.AttrList();
         tnum.insert(Pango.AttrFontFeatures.@new("tnum 1"));
