@@ -1,58 +1,63 @@
 # zentop
 
-A highly optimized, native desktop system monitor built with Python, GTK3, and `psutil`. Features a custom Penpot-inspired UI with real-time performance tracking, advanced process management, a live consumption pie chart, and dynamic theming.
+A highly optimized, native Linux system monitor built with Python, GTK3, and `psutil`, with a native Vala rewrite in progress. It offers real-time performance tracking, advanced process management, a live consumption pie chart, a WizTree-style disk breakdown, and swappable themes.
+
+## Look
+
+zentop is typeset like a railway timetable. Every number uses tabular figures, hairline rules separate the columns, and a one-line header strip holds the wordmark, the tabs, and live CPU/MEM figures.
+
+Load is shown through type:
+* Idle values fade back.
+* Hot values (CPU ≥ 20%, memory ≥ 5%) turn bold in the theme's hot color.
+
+The themes avoid shadows, gradients and transitions, so the UI stays cheap to render. The full design system lives in `python-version/DESIGN.md`.
 
 ## Key Features
 
 * **5 Main Views:**
-    * **Processes:** List or Tree View with real-time stats (CPU, Memory, Disk I/O, Status, Priority, Started, CPU Time). Sortable by clicking any column header (click again to reverse), plus a built-in search filter and an All/My/Active process filter. Pause button (top-right of the search bar) freezes the table so you can browse or search without rows reordering under you.
-    * **Resources:** Real-time Cairo-drawn graphs for CPU usage (overall and per-core), RAM + Swap, and Network activity (auto-scaling).
-    * **Pie Graph:** Live pie chart of the top 10 processes by overall consumption (CPU% + Memory%, blended), with the rest grouped into "Others". Shares the same background data fetch as Processes — no extra process scan.
-    * **File Systems:** Visual progress bars for mounted partitions showing total, used, and free space.
-    * **Themes:** Live theme switcher (see below), applied instantly and remembered across restarts.
-* **Advanced Process Management (Right-click Context Menu):**
-    * **Pin to Top** — keep a process pinned above the rest regardless of sort order (📌), persisted by process name.
-    * Change **CPU Affinity** (Linux-specific), with per-core checkboxes.
-    * Adjust **Process Priority** (nice value) — radio-button presets that show the *current* priority, or a custom value.
-    * Kill (SIGKILL), End (SIGTERM), Stop, or Continue processes.
-    * **Open File Location** (integrates with `xdg-open` / Nemo).
-    * **Highlight Color** — assign a custom color to a process via a native color picker, to spot it at a glance over time.
-    * View detailed process **Properties** (cwd, cmdline, threads, open files, connections, affinity).
-* **Preferences saved automatically** to `~/.config/system-monitor-pp/` — pins and highlight colors in `process_config.json`, active theme in `app_config.json`.
-* **Dynamic Theming:** Switch between 6 CSS palettes on the fly, no restart needed — Default (GitHub Dark), EVA-01, MAGI, EVA-00, EVA-02, and Pastel Fuchsia.
-* **Deeply Optimized:** Built for speed and low CPU usage, comparable to a native system monitor despite being Python:
-    * Background `ThreadPoolExecutor` for all process polling — the GTK main thread never blocks.
-    * Only the currently visible tab is polled; the rest stay idle.
-    * GTK stores are updated in place (row diffing + `reorder()`) instead of being torn down and rebuilt every tick.
-    * No per-cell Python callbacks for rendering — highlighting is done via bound GTK attributes.
-    * Aggressive caching: per-UID usernames, static per-process fields (name/ppid/start time), disk I/O throttled to every 3rd tick, per-color contrast lookups memorized.
+    * **Processes:** List or tree view with live stats: CPU, memory, disk I/O, status, priority, start time and CPU time.
+        * Sort by clicking any column header; click again to reverse.
+        * Search and All/My/Active filters.
+        * A pause button freezes the table while you browse.
+    * **Resources:** Cairo-drawn history graphs for CPU, memory + swap, and network, plus a per-core load board.
+    * **Pie Graph:** The top 10 processes by overall consumption (CPU% + memory%), with the rest grouped into "Others".
+    * **File Systems:** A partition table with usage bars, plus a treemap or pie breakdown of any disk.
+    * **Themes:** A live theme switcher. Your choice is remembered across restarts.
+* **Right-click process menu:**
+    * Pin to Top
+    * End / Kill / Stop / Continue
+    * Priority, showing the current value
+    * CPU Affinity
+    * Open File Location
+    * Highlight Color
+    * Properties
+* **Saved preferences** in `~/.config/system-monitor-pp/`.
+* **6 themes:** Default (GitHub Dark), EVA-01, MAGI, EVA-00, EVA-02, and Pastel Pink. Each theme is a single CSS file, and the graphs read their colors from it.
+* **Deeply optimized:**
+    * Process polling runs in a background thread.
+    * Only the visible tab is polled.
+    * Stores are updated in place.
+    * There are no per-cell Python callbacks, and widgets are built once and only updated afterwards.
 
-## Installation
-
-Designed for Linux environments (specifically tested on Linux Mint/Debian-based distros). Install GTK bindings via your system package manager and `psutil` via `pip`.
-
-### 1. Install Dependencies
+## Installation (python-version)
 
 ```bash
-sudo apt update
-sudo apt install -y python3-gi gir1.2-gtk-3.0 python3-pip
-
+sudo apt install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 python3-pip
 pip install --break-system-packages -r requirements.txt
 ```
 
-### 2. Install UI Font (Optional)
-
-The UI is styled to use **JetBrains Mono** for its data tables. If not installed, it falls back to your system's default monospace font.
+zentop bundles the **Inter** font (SIL OFL) in `fonts/`. If the folder is empty, download the font with:
 
 ```bash
-sudo apt install fonts-jetbrains-mono
+sh fonts/get-fonts.sh
 ```
 
-## Running the App
+Without Inter, zentop falls back to Noto Sans or Ubuntu.
 
-Make sure the directory structure below is intact (the `themes/` folder must sit next to `main.py`), then run:
+## Running
 
 ```bash
+cd python-version
 python3 main.py
 ```
 
@@ -60,14 +65,11 @@ python3 main.py
 
 ```text
 zentop/
-├── main.py            # Application, UI, and caching logic
-├── requirements.txt   # Python dependencies
-├── README.md
-└── themes/            # CSS theme files
-    ├── default.css
-    ├── eva00.css
-    ├── eva01.css
-    ├── eva02.css
-    ├── magi.css
-    └── pastel.css
+├── python-version/
+│   ├── main.py            # App, UI and caching logic
+│   ├── requirements.txt
+│   ├── DESIGN.md          # Design system (tokens, rules)
+│   ├── fonts/             # Inter + get-fonts.sh
+│   └── themes/            # One CSS file per theme
+└── vala-version/          # Native rewrite (in progress)
 ```

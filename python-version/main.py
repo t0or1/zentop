@@ -28,6 +28,8 @@ import pwd
 import getpass
 import subprocess
 import threading
+import ctypes
+import ctypes.util
 from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 from datetime import datetime
@@ -35,11 +37,12 @@ from datetime import datetime
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib, Gdk, Pango
 
 import psutil
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+FONTS_DIR = os.path.join(APP_DIR, "fonts")
 CONFIG_DIR = os.path.expanduser("~/.config/system-monitor-pp")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "process_config.json")
 APP_CONFIG_PATH = os.path.join(CONFIG_DIR, "app_config.json")
@@ -89,29 +92,26 @@ RESOURCES_REFRESH_MS = 1000
 FS_REFRESH_MS = 5000
 HISTORY_LEN = 60  # ~1 minute at 1s ticks
 IO_COUNTERS_EVERY_N_TICKS = 3  # disk I/O columns refresh every ~6s instead of every 2s
-PIN_MARKER = "\U0001F4CC "  # pin emoji; swap for "[PIN] " if it doesn't render on your system
+PIN_ICONS = ("view-pin-symbolic", "starred-symbolic")  # first one the icon theme has wins
 
-PIE_TOP_N = 10  # individual wedges; everything past this gets grouped into "Otros"
+# Load bands: the signature of the table. Numbers are typeset by how much
+# they matter -- idle values go dim, hot ones go bold in the theme's hot
+# colour -- so the busy processes stand out without any chart.
+CPU_IDLE_BELOW = 0.5   # % of one core
+CPU_HOT_FROM = 20.0
+MEM_IDLE_BELOW = 0.5   # % of total RAM
+MEM_HOT_FROM = 5.0
+WEIGHT_NORMAL = 400
+WEIGHT_SEMIBOLD = 600
+WEIGHT_BOLD = 700
+
+# Colour roles each theme CSS defines as `.zt-c-<role> { color: ... }`.
+# They're read once per theme change and handed to Cairo / the tree store.
+COLOR_ROLES = ("ink", "idle", "hot", "bg", "g-bg", "g-grid", "g-cpu", "g-mem",
+               "g-swap", "g-rx", "g-tx") + tuple(f"s{i}" for i in range(8))
+
+PIE_TOP_N = 10  # individual wedges; everything past this gets grouped into "Others"
 FS_SCAN_TOP_N = 20  # same idea, for the disk-usage treemap/pie
-# Fixed categorical palette, independent of the active theme — same
-# approach the history graphs already use (their series colors don't
-# change when you switch themes either). (hex, (r,g,b) 0-1) pairs so
-# neither the Cairo drawing nor the GTK legend chips need to convert.
-PIE_PALETTE = [
-    ("#8B5CF6", (0.545, 0.361, 0.965)),
-    ("#F472B6", (0.957, 0.447, 0.714)),
-    ("#34D399", (0.204, 0.827, 0.600)),
-    ("#FBBF24", (0.984, 0.749, 0.141)),
-    ("#38BDF8", (0.220, 0.741, 0.973)),
-    ("#F87171", (0.973, 0.443, 0.443)),
-    ("#A3E635", (0.639, 0.902, 0.208)),
-    ("#C084FC", (0.753, 0.518, 0.988)),
-    ("#FB923C", (0.984, 0.573, 0.235)),
-    ("#818CF8", (0.506, 0.549, 0.973)),
-    ("#4ADE80", (0.290, 0.871, 0.502)),
-    ("#FCD34D", (0.988, 0.827, 0.302)),
-]
-
 # Pre-built once instead of inside hot loops: except-clause tuples get
 # rebuilt by Python every time they're evaluated, and dict.get()'s default
 # argument is evaluated eagerly even when unused — both add up when done
@@ -154,6 +154,36 @@ def safe_call(fn, default="-"):
         return fn()
     except (psutil.AccessDenied, psutil.Error, FileNotFoundError, OSError):
         return default
+
+def register_app_fonts():
+    """Make the bundled fonts/ folder visible to Pango through fontconfig,
+    for this process only (nothing is installed system-wide). Runs once,
+    before the first widget exists. If anything fails the themes fall back
+    to the system sans."""
+    if not os.path.isdir(FONTS_DIR):
+        return
+    try:
+        fc = ctypes.CDLL(ctypes.util.find_library("fontconfig") or "libfontconfig.so.1")
+        fc.FcConfigAppFontAddDir.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        fc.FcConfigAppFontAddDir(None, FONTS_DIR.encode())
+    except (OSError, AttributeError):
+        pass
+
+def rgb_to_hex(rgb):
+    r, g, b = rgb
+    return "#{:02X}{:02X}{:02X}".format(round(r * 255), round(g * 255), round(b * 255))
+
+def readable_on(rgb, dark, light=(1.0, 1.0, 1.0)):
+    """Pick whichever of `dark` / `light` reads better on top of `rgb`."""
+    lum = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    return dark if lum > 0.5 else light
+
+def tabular_attrs():
+    """Pango attributes for tabular (fixed-width) figures, so numbers line
+    up column by column. Built once per renderer, never per row."""
+    attrs = Pango.AttrList()
+    attrs.insert(Pango.attr_font_features_new("tnum 1"))
+    return attrs
 
 # --------------------------------------------------------- DISK USAGE SCAN
 
@@ -435,14 +465,17 @@ class ProcessCache:
 # ------------------------------------------------------------- HISTORY GRAPH
 
 class HistoryGraph(Gtk.DrawingArea):
-    """Scrolling filled line-chart, GNOME-System-Monitor style."""
+    """Scrolling filled line-chart. Colours come from the active theme via
+    the shared `theme` dict (role -> (r,g,b)), so switching theme only
+    needs a redraw, not a rebuild."""
 
-    def __init__(self, series, y_max=100.0, auto_scale=False, history_len=HISTORY_LEN):
+    def __init__(self, theme, series, y_max=100.0, auto_scale=False, height=120):
         super().__init__()
-        self.series = series  # list of {"color": (r,g,b), "data": deque}
+        self.theme = theme
+        self.series = series  # list of {"role": "g-cpu", "data": deque}
         self.y_max = y_max
         self.auto_scale = auto_scale
-        self.set_size_request(-1, 130)
+        self.set_size_request(-1, height)
         self.connect("draw", self._on_draw)
 
     def push(self, values):
@@ -451,42 +484,75 @@ class HistoryGraph(Gtk.DrawingArea):
         self.queue_draw()
 
     def _on_draw(self, widget, cr):
-        alloc = widget.get_allocation()
-        w, h = alloc.width, alloc.height
-        cr.set_source_rgba(0.055, 0.063, 0.09, 1)
-        cr.rectangle(0, 0, w, h)
-        cr.fill()
-        cr.set_source_rgba(1, 1, 1, 0.06)
+        theme = self.theme
+        w = widget.get_allocated_width()
+        h = widget.get_allocated_height()
+        cr.set_source_rgb(*theme["g-bg"])
+        cr.paint()
+        # timetable rules: three hairlines on whole pixels so they stay crisp
+        cr.set_source_rgb(*theme["g-grid"])
         cr.set_line_width(1)
         for i in range(1, 4):
-            y = h * i / 4
+            y = int(h * i / 4) + 0.5
             cr.move_to(0, y)
             cr.line_to(w, y)
-            cr.stroke()
+        cr.stroke()
         if self.auto_scale:
             y_max = max((v for s in self.series for v in s["data"]), default=0)
             y_max = max(y_max * 1.25, 1)
         else:
             y_max = self.y_max
         for s in self.series:
-            data = s["data"]  # deque supports len() and repeated iteration — no need to copy to a list
-            if len(data) < 2:
-                continue
+            data = s["data"]  # deque supports len() and repeated iteration
             n = len(data)
-            step = w / max(n - 1, 1)
-            r, g, b = s["color"]
-            cr.set_source_rgba(r, g, b, 0.18)
-            cr.move_to(0, h)
-            for i, v in enumerate(data):
-                cr.line_to(i * step, h - (min(v, y_max) / y_max) * h)
-            cr.line_to((n - 1) * step, h)
+            if n < 2:
+                continue
+            step = w / (HISTORY_LEN - 1)
+            x0 = w - (n - 1) * step  # newest sample pinned to the right edge
+            r, g, b = theme[s["role"]]
+            scale = h / y_max
+            pts = [(x0 + i * step, h - min(v, y_max) * scale) for i, v in enumerate(data)]
+            cr.move_to(pts[0][0], h)
+            for x, y in pts:
+                cr.line_to(x, y)
+            cr.line_to(pts[-1][0], h)
             cr.close_path()
+            cr.set_source_rgba(r, g, b, 0.16)
             cr.fill()
-            cr.set_source_rgba(r, g, b, 0.95)
-            cr.set_line_width(2)
-            for i, v in enumerate(data):
-                x, y = i * step, h - (min(v, y_max) / y_max) * h
-                cr.move_to(x, y) if i == 0 else cr.line_to(x, y)
+            cr.move_to(*pts[0])
+            for x, y in pts[1:]:
+                cr.line_to(x, y)
+            cr.set_source_rgb(r, g, b)
+            cr.set_line_width(1.5)
+            cr.stroke()
+        return False
+
+class ColorChip(Gtk.DrawingArea):
+    """A small colour swatch. Drawn with Cairo instead of a per-chip
+    CssProvider: changing its colour is a redraw, not a stylesheet parse."""
+
+    def __init__(self, rgb=(0, 0, 0), size=12, outline=None):
+        super().__init__()
+        self.rgb = rgb
+        self.outline = outline  # theme dict: hairline in its ink, for swatches that may match the ground
+        self.set_size_request(size, size)
+        self.set_valign(Gtk.Align.CENTER)
+        self.connect("draw", self._on_draw)
+
+    def set_rgb(self, rgb):
+        if rgb != self.rgb:
+            self.rgb = rgb
+            self.queue_draw()
+
+    def _on_draw(self, widget, cr):
+        cr.set_source_rgb(*self.rgb)
+        w, h = widget.get_allocated_width(), widget.get_allocated_height()
+        cr.rectangle(0, 0, w, h)
+        cr.fill()
+        if self.outline:
+            cr.set_source_rgba(*self.outline["ink"], 0.35)
+            cr.set_line_width(1)
+            cr.rectangle(0.5, 0.5, w - 1, h - 1)
             cr.stroke()
         return False
 
@@ -498,8 +564,9 @@ class PieGraph(Gtk.DrawingArea):
     window, not drawn here — text layout in raw Cairo is a pain to keep
     legible, GTK labels already handle it for free."""
 
-    def __init__(self):
+    def __init__(self, theme):
         super().__init__()
+        self.theme = theme
         self.slices = []  # list of (label, value), already sorted
         self.set_size_request(-1, 320)
         self.connect("draw", self._on_draw)
@@ -509,8 +576,8 @@ class PieGraph(Gtk.DrawingArea):
         self.queue_draw()
 
     def _on_draw(self, widget, cr):
-        alloc = widget.get_allocation()
-        w, h = alloc.width, alloc.height
+        w = widget.get_allocated_width()
+        h = widget.get_allocated_height()
         cx, cy = w / 2, h / 2
         radius = max(min(w, h) / 2 - 12, 1)
         total = sum(v for _, v in self.slices)
@@ -519,13 +586,24 @@ class PieGraph(Gtk.DrawingArea):
         start_angle = -math.pi / 2  # 12 o'clock
         for i, (_, value) in enumerate(self.slices):
             end_angle = start_angle + (value / total) * 2 * math.pi
-            _, (r, g, b) = PIE_PALETTE[i % len(PIE_PALETTE)]
-            cr.set_source_rgba(r, g, b, 0.92)
+            cr.set_source_rgb(*self.theme[f"s{i % 8}"])
             cr.move_to(cx, cy)
             cr.arc(cx, cy, radius, start_angle, end_angle)
             cr.close_path()
             cr.fill()
             start_angle = end_angle
+        # hollow centre + 1px gaps between wedges in the ground colour:
+        # reads as a ring of figures instead of a candy pie
+        cr.set_source_rgb(*self.theme["bg"])
+        cr.set_line_width(2)
+        start_angle = -math.pi / 2
+        for _, value in (self.slices if len(self.slices) > 1 else ()):
+            cr.move_to(cx, cy)
+            cr.line_to(cx + radius * math.cos(start_angle), cy + radius * math.sin(start_angle))
+            start_angle += (value / total) * 2 * math.pi
+        cr.stroke()
+        cr.arc(cx, cy, radius * 0.58, 0, 2 * math.pi)
+        cr.fill()
         return False
 
 # ---------------------------------------------------------- TREEMAP GRAPH
@@ -535,8 +613,9 @@ class TreemapGraph(Gtk.DrawingArea):
     to disk usage via the squarified layout above. Labels are drawn
     inside a tile only if it's big enough to hold them legibly."""
 
-    def __init__(self):
+    def __init__(self, theme):
         super().__init__()
+        self.theme = theme
         self.entries = []  # list of (name, size, is_dir)
         self.set_size_request(-1, 380)
         self.connect("draw", self._on_draw)
@@ -546,35 +625,40 @@ class TreemapGraph(Gtk.DrawingArea):
         self.queue_draw()
 
     def _on_draw(self, widget, cr):
-        alloc = widget.get_allocation()
-        w, h = alloc.width, alloc.height
+        w = widget.get_allocated_width()
+        h = widget.get_allocated_height()
+        theme = self.theme
+        cr.set_source_rgb(*theme["g-bg"])
+        cr.paint()
         if not self.entries or w <= 0 or h <= 0:
             return False
         sizes = [e[1] for e in self.entries]
         normalized = _normalize_sizes(sizes, w, h)
         rects = squarify_treemap(normalized, 0, 0, w, h)
-        cr.select_font_face("sans-serif")
+        cr.select_font_face("Inter", 0, 0)
+        dark = theme["bg"]
         for i, ((name, size, is_dir), rect) in enumerate(zip(self.entries, rects)):
             rx, ry, rw, rh = rect
-            _, (r, g, b) = PIE_PALETTE[i % len(PIE_PALETTE)]
-            cr.set_source_rgba(r, g, b, 0.92 if is_dir else 0.68)
-            cr.rectangle(rx, ry, rw, rh)
+            tile = theme[f"s{i % 8}"]
+            if not is_dir:  # loose files read one step quieter than folders
+                gb = theme["g-bg"]
+                tile = tuple(c * 0.7 + g * 0.3 for c, g in zip(tile, gb))
+            cr.set_source_rgb(*tile)
+            # 1px ground-colour gutter between tiles instead of a stroked border
+            cr.rectangle(rx + 0.5, ry + 0.5, max(rw - 1, 0), max(rh - 1, 0))
             cr.fill()
-            cr.set_source_rgba(0.04, 0.04, 0.05, 0.9)
-            cr.set_line_width(1.5)
-            cr.rectangle(rx, ry, rw, rh)
-            cr.stroke()
             if rw > 42 and rh > 20:
+                ink = readable_on(tile, dark)
                 cr.save()
                 cr.rectangle(rx, ry, rw, rh)
                 cr.clip()
-                cr.set_source_rgba(1, 1, 1, 0.95)
-                cr.set_font_size(min(13, max(9, rh / 6)))
-                cr.move_to(rx + 4, ry + 14)
-                cr.show_text(self._truncate(cr, name, rw - 8))
-                if rh > 36:
-                    cr.set_source_rgba(1, 1, 1, 0.75)
-                    cr.move_to(rx + 4, ry + 28)
+                cr.set_source_rgb(*ink)
+                cr.set_font_size(12)
+                cr.move_to(rx + 6, ry + 16)
+                cr.show_text(self._truncate(cr, name, rw - 12))
+                if rh > 38:
+                    cr.set_source_rgba(ink[0], ink[1], ink[2], 0.78)
+                    cr.move_to(rx + 6, ry + 31)
                     cr.show_text(format_bytes(size))
                 cr.restore()
         return False
@@ -595,10 +679,22 @@ class SystemMonitorWindow(Gtk.Window):
         ("DISKWRITE", 9), ("PRIORITY", 10), ("STATUS", 11), ("STARTED", 12),
         ("CPU TIME", 13),
     ]
-    # 0=pid(int), 1-13=display strings, 14=background hex, 15=foreground hex
+    # 0=pid(int), 1-13=display strings, 14=background hex, 15=foreground hex,
+    # 16=pin icon name, then the load-band columns: per-cell foreground and
+    # weight, computed once per row when data arrives (no cell_data_func).
     BG_COL = 14
     FG_COL = 15
-    STORE_SCHEMA = (int, *([str] * 15))
+    PIN_COL = 16
+    CPU_FG_COL = 17
+    CPU_WT_COL = 18
+    MEM_FG_COL = 19
+    MEM_WT_COL = 20
+    RD_FG_COL = 21
+    WR_FG_COL = 22
+    NAME_WT_COL = 23
+    STORE_SCHEMA = (int, *([str] * 16), str, int, str, int, str, str, int)
+    # column index -> (foreground column, weight column or None)
+    BAND_BINDINGS = {3: (17, 18), 5: (19, 20), 8: (21, None), 9: (22, None), 1: (15, 23)}
     SORT_KEYS = {
         1: lambda r: (r["name"] or "").lower(),
         2: lambda r: (r["user"] or "").lower(),
@@ -641,12 +737,28 @@ class SystemMonitorWindow(Gtk.Window):
         self.fs_scan_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fs-scan")
         self.fs_scan_in_progress = False
         self.fs_scan_cancel_event = None
+        self.total_mem = psutil.virtual_memory().total or 1
+        # Active theme colours, role -> (r,g,b). Mutated in place on theme
+        # change so every graph holding a reference sees the new values.
+        self.theme = {role: (0.5, 0.5, 0.5) for role in COLOR_ROLES}
+        self.theme_hex = {}
+        self.pin_icon = next((n for n in PIN_ICONS if Gtk.IconTheme.get_default().has_icon(n)), None)
+        self._hdr_hot = False
+        self._last_count = -1
+        self._last_pie_rows = []
+        self._last_fs_entries = []
         self._load_css()
         self._build_ui()
+        self._read_theme_colors()
+        for chip, i in self._legend_chips:  # built before the colours were read
+            chip.set_rgb(self.theme[f"s{i % 8}"])
+        self.connect("style-updated", self._on_style_updated)
         self.connect("destroy", self._on_destroy)
         GLib.timeout_add(PROCESS_REFRESH_MS, self._refresh_processes)
+        GLib.timeout_add(PROCESS_REFRESH_MS, self._refresh_header)
         GLib.timeout_add(RESOURCES_REFRESH_MS, self._refresh_resources)
         GLib.timeout_add(FS_REFRESH_MS, self._refresh_filesystems)
+        self._refresh_header()
         self._on_active_tab_changed(self.stack, None)  # populate whichever tab is shown first
 
     def _on_destroy(self, *args):
@@ -670,7 +782,7 @@ class SystemMonitorWindow(Gtk.Window):
     def _apply_theme(self, theme_id):
         path = os.path.join(THEMES_DIR, f"{theme_id}.css")
         if not os.path.exists(path):
-            self._show_error(f"No se encontró el archivo de tema: {path}")
+            self._show_error(f"Could not find theme file: {path}")
             return
         # Reloading content on the SAME provider (already registered on the
         # screen) is enough — GTK re-applies styles to every widget live,
@@ -680,29 +792,72 @@ class SystemMonitorWindow(Gtk.Window):
         self.app_config["theme"] = theme_id
         save_app_config(self.app_config)
 
+    # -- theme colour roles
+
+    def _read_theme_colors(self):
+        """Read every `.zt-c-<role>` colour from the loaded CSS. Returns True
+        when something changed. Cost: ~20 style lookups, only on theme or
+        window-state changes -- never per tick."""
+        ctx = self.get_style_context()
+        changed = False
+        for role in COLOR_ROLES:
+            ctx.save()
+            ctx.add_class("zt-c-" + role)
+            c = ctx.get_color(Gtk.StateFlags.NORMAL)
+            ctx.restore()
+            rgb = (c.red, c.green, c.blue)
+            if self.theme.get(role) != rgb:
+                self.theme[role] = rgb
+                changed = True
+        if changed:
+            self.theme_hex = {role: rgb_to_hex(rgb) for role, rgb in self.theme.items()}
+        return changed
+
+    def _on_style_updated(self, widget):
+        # Also fires on focus in/out (backdrop state); bail out unless the
+        # colours really changed, so that stays free.
+        if not self._read_theme_colors():
+            return
+        self._flat_pid_values.clear()  # band colours changed: rewrite rows on next tick
+        for chip, i in getattr(self, "_legend_chips", ()):
+            chip.set_rgb(self.theme[f"s{i % 8}"])
+        for g in (self.cpu_history, self.mem_history, self.net_history,
+                  self.pie_graph, self.fs_pie_graph, self.fs_treemap):
+            g.queue_draw()
+        if self.active_tab == "processes" and not self.processes_paused:
+            self._refresh_processes()
+
+    # -- layout
+
     def _build_ui(self):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.get_style_context().add_class("root-bg")
         self.add(root)
+        # One-line header strip: wordmark, tabs, live figures. Replaces the
+        # old centred title + pill row and gives the tables ~100px back.
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+        header.get_style_context().add_class("zt-header")
         title = Gtk.Label(label="ZENTOP")
         title.get_style_context().add_class("title-label")
-        title.set_margin_top(24)
-        title.set_margin_bottom(16)
-        root.pack_start(title, False, False, 0)
+        title.set_margin_end(28)
+        header.pack_start(title, False, False, 0)
         self.stack = Gtk.Stack()
-        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.stack.set_transition_duration(150)
+        # no crossfade: an instant switch costs zero animation frames
+        self.stack.set_transition_type(Gtk.StackTransitionType.NONE)
         switcher = Gtk.StackSwitcher()
         switcher.set_stack(self.stack)
-        switcher.set_halign(Gtk.Align.CENTER)
+        switcher.set_halign(Gtk.Align.START)
         switcher.get_style_context().add_class("pill-switcher")
-        switcher.set_margin_bottom(20)
-        root.pack_start(switcher, False, False, 0)
+        header.pack_start(switcher, False, False, 0)
+        self.hdr_mem = self._header_stat(header, "MEM")
+        self.hdr_cpu = self._header_stat(header, "CPU")
+        root.pack_start(header, False, False, 0)
         self.stack.add_titled(self._build_processes_tab(), "processes", "PROCESSES")
         self.stack.add_titled(self._build_resources_tab(), "resources", "RESOURCES")
         self.stack.add_titled(self._build_piegraph_tab(), "piegraph", "PIE GRAPH")
         self.stack.add_titled(self._build_filesystems_tab(), "filesystems", "FILE SYSTEMS")
         self.stack.add_titled(self._build_themes_tab(), "themes", "THEMES")
+        switcher.set_homogeneous(False)  # after the pages exist: tabs as wide as their words
         self.stack.set_visible_child_name("processes")
         self.stack.connect("notify::visible-child-name", self._on_active_tab_changed)
         root.pack_start(self.stack, True, True, 0)
@@ -716,13 +871,45 @@ class SystemMonitorWindow(Gtk.Window):
             self._refresh_resources()
         elif self.active_tab == "filesystems":
             self._refresh_filesystems()
+
+    def _header_stat(self, header, key):
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.set_margin_start(20)
+        k = Gtk.Label(label=key)
+        k.get_style_context().add_class("zt-stat-key")
+        v = Gtk.Label(label="-")
+        v.get_style_context().add_class("zt-stat-value")
+        box.pack_start(k, False, False, 0)
+        box.pack_start(v, False, False, 0)
+        header.pack_end(box, False, False, 0)
+        return v
+
+    def _refresh_header(self):
+        """Always-visible figures. Two tiny reads (/proc/stat, /proc/meminfo)
+        every 2s regardless of tab; labels are only touched when they change."""
+        cpu = psutil.cpu_percent(None)
+        vm = psutil.virtual_memory()
+        cpu_txt = f"{cpu:.0f}%"
+        mem_txt = f"{format_bytes(vm.used)} / {format_bytes(vm.total)}"
+        if self.hdr_cpu.get_text() != cpu_txt:
+            self.hdr_cpu.set_text(cpu_txt)
+        if self.hdr_mem.get_text() != mem_txt:
+            self.hdr_mem.set_text(mem_txt)
+        hot = cpu >= 80
+        if hot != self._hdr_hot:
+            self._hdr_hot = hot
+            ctx = self.hdr_cpu.get_style_context()
+            (ctx.add_class if hot else ctx.remove_class)("zt-hot")
+        return True
     # ------------------------------------------------------------ PROCESSES
 
     def _build_processes_tab(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        toolbar.set_margin_start(20)
+        toolbar.set_margin_end(20)
+        toolbar.set_margin_top(12)
+        toolbar.set_margin_bottom(10)
         self.filter_combo = Gtk.ComboBoxText()
         self.filter_combo.append("all", "All Processes")
         self.filter_combo.append("mine", "My Processes")
@@ -739,14 +926,18 @@ class SystemMonitorWindow(Gtk.Window):
         self.search_entry.get_style_context().add_class("search-entry")
         self.search_entry.connect("search-changed", self._on_search_changed)
         toolbar.pack_start(self.search_entry, True, True, 0)
+        self.proc_count_label = Gtk.Label(label="")
+        self.proc_count_label.get_style_context().add_class("zt-count")
+        self.proc_count_label.set_margin_start(6)
+        toolbar.pack_start(self.proc_count_label, False, False, 0)
         self.pause_toggle = Gtk.ToggleButton()
-        self.pause_toggle.set_relief(Gtk.ReliefStyle.NONE)
-        self.pause_toggle.set_tooltip_text("Pausar actualización de la tabla")
+        self.pause_toggle.get_style_context().add_class("zt-icon-btn")
+        self.pause_toggle.set_tooltip_text("Pause table updates")
         self.pause_icon = Gtk.Image.new_from_icon_name("media-playback-pause-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         self.pause_toggle.add(self.pause_icon)
         self.pause_toggle.connect("toggled", self._on_pause_toggled)
         toolbar.pack_start(self.pause_toggle, False, False, 0)
-        box.pack_start(toolbar, False, False, 4)
+        box.pack_start(toolbar, False, False, 0)
         self.flat_store = Gtk.ListStore(*self.STORE_SCHEMA)
         self.tree_store = Gtk.TreeStore(*self.STORE_SCHEMA)
         self._flat_pid_iters = {}
@@ -756,13 +947,32 @@ class SystemMonitorWindow(Gtk.Window):
         self.process_view = Gtk.TreeView(model=self.process_filter)
         self.process_view.get_style_context().add_class("data-table")
         self.process_view.connect("button-press-event", self._on_process_button_press)
+        tnum = tabular_attrs()
         for title, idx in self.COLUMNS:
-            renderer = Gtk.CellRendererText(xalign=0.0 if idx in (1, 2, 11) else 1.0)
             col = Gtk.TreeViewColumn(title)
-            col.pack_start(renderer, True)
+            renderer = Gtk.CellRendererText(xalign=0.0 if idx in (1, 2, 11) else 1.0)
+            renderer.set_padding(8, 3)
+            if idx not in (1, 2, 11):
+                renderer.set_property("attributes", tnum)
+            # PROCESS: the name takes only its own width so the pin sits right after it
+            col.pack_start(renderer, idx != 1)
             col.add_attribute(renderer, "text", idx)
             col.add_attribute(renderer, "background", self.BG_COL)
-            col.add_attribute(renderer, "foreground", self.FG_COL)
+            if idx == 1:  # PROCESS: pin icon after the name, so names stay on the header's edge
+                pin = Gtk.CellRendererPixbuf()
+                pin.set_padding(6, 0)
+                pin.set_alignment(0.0, 0.5)
+                col.pack_start(pin, True)
+                # don't line cells up across rows, or every pin sits past the longest name
+                for cell in (renderer, pin):
+                    col.get_area().cell_set_property(cell, "align", False)
+                    col.get_area().cell_set_property(cell, "fixed-size", False)
+                col.add_attribute(pin, "icon-name", self.PIN_COL)
+                col.add_attribute(pin, "cell-background", self.BG_COL)
+            fg_col, wt_col = self.BAND_BINDINGS.get(idx, (self.FG_COL, None))
+            col.add_attribute(renderer, "foreground", fg_col)
+            if wt_col is not None:
+                col.add_attribute(renderer, "weight", wt_col)
             col.set_resizable(True)
             col.set_expand(idx == 1)
             col.set_clickable(True)
@@ -771,6 +981,9 @@ class SystemMonitorWindow(Gtk.Window):
         self._update_sort_indicators()
         scroller = Gtk.ScrolledWindow()
         scroller.set_vexpand(True)
+        # 12px + the cells' 8px padding lines the first column up with the toolbar
+        scroller.set_margin_start(12)
+        scroller.set_margin_end(12)
         scroller.add(self.process_view)
         box.pack_start(scroller, True, True, 0)
         return box
@@ -791,17 +1004,33 @@ class SystemMonitorWindow(Gtk.Window):
         return pinned + unpinned
 
     def _row_tuple(self, r, now):
-        name = r["name"]
         color = r["highlight_color"]
         cpuid = r["cpuid"]
+        cpu = r["cpu"]
+        mem_pct = r["mem"] * 100.0 / self.total_mem
+        if color:
+            # highlighted row: one readable ink for every cell on its colour
+            fg = self._contrast_color(color)
+            cpu_fg = mem_fg = rd_fg = wr_fg = fg
+        else:
+            fg = None
+            idle, hot = self.theme_hex["idle"], self.theme_hex["hot"]
+            cpu_fg = idle if cpu < CPU_IDLE_BELOW else (hot if cpu >= CPU_HOT_FROM else None)
+            mem_fg = idle if mem_pct < MEM_IDLE_BELOW else (hot if mem_pct >= MEM_HOT_FROM else None)
+            rd_fg = None if r["read_rate"] else idle
+            wr_fg = None if r["write_rate"] else idle
         return (
-            r["pid"], f"{PIN_MARKER}{name}" if r["pinned"] else name, r["user"] or "-", f"{r['cpu']:.1f}%",
+            r["pid"], r["name"], r["user"] or "-", f"{cpu:.1f}%",
             str(cpuid) if cpuid >= 0 else "-",
             format_bytes(r["mem"]), format_bytes(r["read_total"]), format_bytes(r["write_total"]),
             format_rate(r["read_rate"]), format_rate(r["write_rate"]),
             str(r["priority"]), r["status"], format_started(r["create_time"], now),
-            format_duration(r["cputime"]), color if color else None,
-            self._contrast_color(color) if color else None,
+            format_duration(r["cputime"]), color if color else None, fg,
+            self.pin_icon if r["pinned"] else None,
+            cpu_fg, WEIGHT_BOLD if cpu >= CPU_HOT_FROM else WEIGHT_NORMAL,
+            mem_fg, WEIGHT_BOLD if mem_pct >= MEM_HOT_FROM else WEIGHT_NORMAL,
+            rd_fg, wr_fg,
+            WEIGHT_SEMIBOLD if r["pinned"] else WEIGHT_NORMAL,
         )
 
     def _filter_func(self, model, it, data):
@@ -834,7 +1063,7 @@ class SystemMonitorWindow(Gtk.Window):
         self.processes_paused = button.get_active()
         if self.processes_paused:
             self.pause_icon.set_from_icon_name("media-playback-start-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-            button.set_tooltip_text("Restart update")
+            button.set_tooltip_text("Resume update")
         else:
             self.pause_icon.set_from_icon_name("media-playback-pause-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
             button.set_tooltip_text("Stop process table update")
@@ -909,6 +1138,9 @@ class SystemMonitorWindow(Gtk.Window):
             self._apply_tree(rows, now)
         else:
             self._apply_flat(rows, now)
+        if len(rows) != self._last_count:
+            self._last_count = len(rows)
+            self.proc_count_label.set_text(f"{len(rows)} processes")
         return False
 
     def _apply_flat(self, rows, now):
@@ -1013,7 +1245,7 @@ class SystemMonitorWindow(Gtk.Window):
         menu.append(Gtk.SeparatorMenuItem())
         priority_item = Gtk.MenuItem(label="Change Priority")
         priority_menu = Gtk.Menu()
-        current_label = Gtk.MenuItem(label=f"Prioridad actual: {current_nice if current_nice is not None else '?'}")
+        current_label = Gtk.MenuItem(label=f"Active Priority: {current_nice if current_nice is not None else '?'}")
         current_label.set_sensitive(False)
         priority_menu.append(current_label)
         priority_menu.append(Gtk.SeparatorMenuItem())
@@ -1114,7 +1346,7 @@ class SystemMonitorWindow(Gtk.Window):
             proc = psutil.Process(pid)
             current = set(proc.cpu_affinity())
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            self._show_error("Permission dennied or non-existent process.")
+            self._show_error("Permission denied, or the process no longer exists.")
             return
         except AttributeError:
             self._show_error("cpu_affinity() not supported in this system.")
@@ -1174,7 +1406,7 @@ class SystemMonitorWindow(Gtk.Window):
             self._show_error("could not find 'xdg-open'. Install with: sudo apt install xdg-utils")
 
     def _action_highlight_color(self, pid, proc_name):
-        dialog = Gtk.ColorChooserDialog(title=f"Color para \"{proc_name}\"", transient_for=self)
+        dialog = Gtk.ColorChooserDialog(title=f"Color for \"{proc_name}\"", transient_for=self)
         existing = self.process_config.get(proc_name, {}).get("highlight_color")
         if existing:
             rgba = Gdk.RGBA()
@@ -1227,18 +1459,18 @@ class SystemMonitorWindow(Gtk.Window):
         except psutil.NoSuchProcess:
             self._show_error("The process does not exist.")
             return
-        dialog = Gtk.Dialog(title=f"Propiedades - PID {pid}", transient_for=self)
-        dialog.add_buttons("Cerrar", Gtk.ResponseType.CLOSE)
+        dialog = Gtk.Dialog(title=f"Properties - PID {pid}", transient_for=self)
+        dialog.add_buttons("Close", Gtk.ResponseType.CLOSE)
         dialog.set_default_size(440, 340)
         content = dialog.get_content_area()
         content.set_border_width(16)
         content.get_style_context().add_class("props-dialog")
         grid = Gtk.Grid(row_spacing=6, column_spacing=16)
         fields = [
-            ("PID", str(pid)), ("Nombre", name), ("Estado", status), ("Usuario", user),
-            ("Ejecutable", exe), ("Directorio", cwd), ("Comando", cmdline),
-            ("Hilos", str(threads)), ("Iniciado", created), ("CPU Affinity", affinity),
-            ("Archivos abiertos", str(open_files)), ("Conexiones", str(conns)),
+            ("PID", str(pid)), ("Name", name), ("State", status), ("User", user),
+            ("Executable", exe), ("Directory", cwd), ("Command", cmdline),
+            ("Threads", str(threads)), ("Created", created), ("CPU Affinity", affinity),
+            ("Open Files", str(open_files)), ("Connections", str(conns)),
         ]
         for i, (label, value) in enumerate(fields):
             lbl = Gtk.Label(label=label, xalign=0)
@@ -1256,23 +1488,50 @@ class SystemMonitorWindow(Gtk.Window):
     # ------------------------------------------------------------ PIE GRAPH
 
     def _build_piegraph_tab(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
-        box.set_margin_top(16)
-        box.set_margin_bottom(24)
-        self.pie_graph = PieGraph()
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=32)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
+        box.set_margin_top(20)
+        box.set_margin_bottom(20)
+        self.pie_graph = PieGraph(self.theme)
         self.pie_graph.set_hexpand(True)
         self.pie_graph.set_vexpand(True)
         box.pack_start(self.pie_graph, True, True, 0)
-        legend_scroller = Gtk.ScrolledWindow()
-        legend_scroller.set_size_request(300, -1)
-        legend_scroller.set_vexpand(True)
-        self.pie_legend_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.pie_legend_box.set_margin_top(4)
-        legend_scroller.add(self.pie_legend_box)
-        box.pack_start(legend_scroller, False, False, 0)
+        side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        side.set_size_request(320, -1)
+        side.pack_start(self._section_label("TOP CONSUMERS  ·  CPU% + MEM%"), False, False, 0)
+        self.pie_legend = self._build_legend(side, PIE_TOP_N + 1)
+        box.pack_start(side, False, False, 0)
         return box
+
+    def _build_legend(self, parent, rows):
+        """A fixed set of legend rows built once. Updating = setting label
+        text; no widgets are created or destroyed per tick."""
+        legend_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        parent.pack_start(legend_box, False, False, 0)
+        entries = []
+        self._legend_chips = getattr(self, "_legend_chips", [])
+        attrs = tabular_attrs()
+        for i in range(rows):
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+            row.get_style_context().add_class("zt-theme-row")
+            chip = ColorChip(self.theme[f"s{i % 8}"], size=10)
+            self._legend_chips.append((chip, i))
+            name = Gtk.Label(label="", xalign=0)
+            name.set_ellipsize(Pango.EllipsizeMode.END)
+            name.get_style_context().add_class("props-value")
+            pct = Gtk.Label(label="", xalign=1)
+            pct.set_attributes(attrs)
+            pct.get_style_context().add_class("props-value")
+            row.pack_start(chip, False, False, 0)
+            row.pack_start(name, True, True, 0)
+            row.pack_start(pct, False, False, 0)
+            row.set_no_show_all(True)
+            for w in (chip, name, pct):
+                w.show()
+            legend_box.pack_start(row, False, False, 0)
+            entries.append((row, name, pct))
+        return entries
 
     def _apply_pie(self, rows):
         """'Overall' consumption = CPU% + memory% of total RAM, blended
@@ -1280,11 +1539,10 @@ class SystemMonitorWindow(Gtk.Window):
         reasonable single 'how much of the machine is this using' score.
         Reuses the SAME row data the Processes tab fetches; no separate
         process scan just for this chart."""
-        total_mem = psutil.virtual_memory().total
+        total_mem = self.total_mem
         scored = []
         for r in rows:
-            mem_pct = (r["mem"] / total_mem * 100) if total_mem else 0.0
-            score = r["cpu"] + mem_pct
+            score = r["cpu"] + r["mem"] * 100.0 / total_mem
             if score > 0:
                 scored.append((r["name"], score))
         scored.sort(key=lambda t: t[1], reverse=True)
@@ -1293,117 +1551,131 @@ class SystemMonitorWindow(Gtk.Window):
         others_total = sum(s for _, s in rest)
         slices = list(top)
         if others_total > 0.05:
-            slices.append((f"Otros ({len(rest)})", others_total))
+            slices.append((f"Others ({len(rest)})", others_total))
         self.pie_graph.set_data(slices)
-        self._update_legend(self.pie_legend_box, slices)
+        self._update_legend(self.pie_legend, slices)
 
-    def _update_legend(self, legend_box, slices):
-        for child in legend_box.get_children():
-            legend_box.remove(child)
+    def _update_legend(self, entries, slices, fmt_value=None):
         total = sum(v for _, v in slices) or 1.0
-        for i, (name, value) in enumerate(slices):
-            hex_color, _ = PIE_PALETTE[i % len(PIE_PALETTE)]
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            row.pack_start(self._make_color_chip(hex_color), False, False, 0)
-            label = Gtk.Label(label=f"{name}  —  {value / total * 100:.1f}%", xalign=0)
-            label.get_style_context().add_class("props-value")
-            row.pack_start(label, True, True, 0)
-            legend_box.pack_start(row, False, False, 0)
-        legend_box.show_all()
+        for i, (row, name_lbl, pct_lbl) in enumerate(entries):
+            if i < len(slices):
+                name, value = slices[i]
+                txt = fmt_value(value) if fmt_value else f"{value / total * 100:.1f}%"
+                if name_lbl.get_text() != name:
+                    name_lbl.set_text(name)
+                if pct_lbl.get_text() != txt:
+                    pct_lbl.set_text(txt)
+                if not row.get_visible():
+                    row.show()
+            elif row.get_visible():
+                row.hide()
     # ------------------------------------------------------------ RESOURCES
 
     def _build_resources_tab(self):
         outer = Gtk.ScrolledWindow()
         outer.set_vexpand(True)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
-        box.set_margin_top(12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
+        box.set_margin_top(16)
         box.set_margin_bottom(24)
         outer.add(box)
-        box.pack_start(self._section_label("CPU"), False, False, 0)
+        # CPU: the figure first, then its history, then the per-core board
+        _, self.cpu_total_label = self._section_header(box, "CPU")
+        self.cpu_history = HistoryGraph(
+            self.theme, [{"role": "g-cpu", "data": deque(maxlen=HISTORY_LEN)}], y_max=100.0)
+        box.pack_start(self.cpu_history, False, False, 0)
         core_count = psutil.cpu_count(logical=True) or 1
         self.core_bars = []
-        cores_grid = Gtk.Grid(row_spacing=6, column_spacing=16)
-        cols = 2
+        cores_grid = Gtk.Grid(row_spacing=10, column_spacing=24, column_homogeneous=False)
+        cores_grid.set_margin_top(6)
+        cols = 2 if core_count <= 4 else 4
         for i in range(core_count):
             lbl = Gtk.Label(label=f"CORE {i}", xalign=0)
             lbl.get_style_context().add_class("bar-label")
+            lbl.set_width_chars(7)
             bar = Gtk.ProgressBar()
             bar.get_style_context().add_class("cpu-bar")
             bar.set_hexpand(True)
-            bar.set_show_text(True)
+            bar.set_valign(Gtk.Align.CENTER)
+            val = Gtk.Label(label="-", xalign=1)
+            val.get_style_context().add_class("bar-label")
+            val.set_width_chars(4)
             r, c = divmod(i, cols)
-            cores_grid.attach(lbl, c * 2, r, 1, 1)
-            cores_grid.attach(bar, c * 2 + 1, r, 1, 1)
-            self.core_bars.append(bar)
+            cores_grid.attach(lbl, c * 3, r, 1, 1)
+            cores_grid.attach(bar, c * 3 + 1, r, 1, 1)
+            cores_grid.attach(val, c * 3 + 2, r, 1, 1)
+            self.core_bars.append((bar, val))
         box.pack_start(cores_grid, False, False, 0)
-        box.pack_start(self._section_label("CPU HISTORY"), False, False, 0)
-        self.cpu_history = HistoryGraph(
-            series=[{"color": (0.545, 0.361, 0.965), "data": deque(maxlen=HISTORY_LEN)}],
-            y_max=100.0,
-        )
-        box.pack_start(self.cpu_history, False, False, 0)
-        box.pack_start(self._section_label("MEMORY"), False, False, 0)
+        # MEMORY & SWAP
+        _, self.mem_total_label = self._section_header(box, "MEMORY", margin_top=24)
         self.ram_bar = Gtk.ProgressBar()
         self.ram_bar.get_style_context().add_class("ram-bar")
-        self.ram_bar.set_show_text(True)
         box.pack_start(self.ram_bar, False, False, 0)
-        box.pack_start(self._section_label("SWAP"), False, False, 0)
+        _, self.swap_total_label = self._section_header(box, "SWAP", margin_top=8)
         self.swap_bar = Gtk.ProgressBar()
         self.swap_bar.get_style_context().add_class("swap-bar")
-        self.swap_bar.set_show_text(True)
         box.pack_start(self.swap_bar, False, False, 0)
-        box.pack_start(self._section_label("MEMORY & SWAP HISTORY"), False, False, 0)
         self.mem_history = HistoryGraph(
-            series=[
-                {"color": (0.655, 0.545, 0.980), "data": deque(maxlen=HISTORY_LEN)},
-                {"color": (0.941, 0.533, 0.243), "data": deque(maxlen=HISTORY_LEN)},
-            ],
-            y_max=100.0,
-        )
+            self.theme,
+            [{"role": "g-mem", "data": deque(maxlen=HISTORY_LEN)},
+             {"role": "g-swap", "data": deque(maxlen=HISTORY_LEN)}],
+            y_max=100.0)
+        self.mem_history.set_margin_top(6)
         box.pack_start(self.mem_history, False, False, 0)
-        net_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
-        net_header.pack_start(self._section_label("NETWORK"), False, False, 0)
-        self.net_recv_label = Gtk.Label(label="↓ 0.0B/s")
-        self.net_recv_label.get_style_context().add_class("net-recv-label")
-        self.net_sent_label = Gtk.Label(label="↑ 0.0B/s")
+        # NETWORK
+        net_header, _ = self._section_header(box, "NETWORK", margin_top=24, with_value=False)
+        self.net_sent_label = Gtk.Label(label="TX 0.0B/s")
         self.net_sent_label.get_style_context().add_class("net-sent-label")
+        self.net_recv_label = Gtk.Label(label="RX 0.0B/s")
+        self.net_recv_label.get_style_context().add_class("net-recv-label")
+        self.net_recv_label.set_margin_end(18)
         net_header.pack_end(self.net_sent_label, False, False, 0)
         net_header.pack_end(self.net_recv_label, False, False, 0)
-        box.pack_start(net_header, False, False, 0)
         self.net_history = HistoryGraph(
-            series=[
-                {"color": (0.545, 0.361, 0.965), "data": deque(maxlen=HISTORY_LEN)},
-                {"color": (0.957, 0.447, 0.714), "data": deque(maxlen=HISTORY_LEN)},
-            ],
-            auto_scale=True,
-        )
+            self.theme,
+            [{"role": "g-rx", "data": deque(maxlen=HISTORY_LEN)},
+             {"role": "g-tx", "data": deque(maxlen=HISTORY_LEN)}],
+            auto_scale=True)
         box.pack_start(self.net_history, False, False, 0)
         return outer
 
     def _section_label(self, text):
         lbl = Gtk.Label(label=text, xalign=0)
         lbl.get_style_context().add_class("section-label")
-        lbl.set_margin_top(6)
         return lbl
+
+    def _section_header(self, parent, text, margin_top=0, with_value=True):
+        """Section name on the left, its live figure on the right, like a
+        timetable's line name and departure time on one rule."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        row.set_margin_top(margin_top)
+        row.pack_start(self._section_label(text), False, False, 0)
+        value = None
+        if with_value:
+            value = Gtk.Label(label="-", xalign=1)
+            value.get_style_context().add_class("zt-stat-value")
+            row.pack_end(value, False, False, 0)
+        parent.pack_start(row, False, False, 0)
+        return row, value
 
     def _refresh_resources(self):
         if self.active_tab != "resources":
             return True
         per_core = psutil.cpu_percent(percpu=True)
-        for bar, pct in zip(self.core_bars, per_core):
+        for (bar, val), pct in zip(self.core_bars, per_core):
             bar.set_fraction(pct / 100.0)
-            bar.set_text(f"{pct:.0f}%")
+            val.set_text(f"{pct:.0f}%")
         overall_cpu = sum(per_core) / len(per_core) if per_core else 0.0
         self.cpu_history.push([overall_cpu])
+        self.cpu_total_label.set_text(f"{overall_cpu:.0f}%")
         vm = psutil.virtual_memory()
         self.ram_bar.set_fraction(vm.percent / 100.0)
-        self.ram_bar.set_text(f"{format_bytes(vm.used)} / {format_bytes(vm.total)} ({vm.percent:.0f}%)")
+        self.mem_total_label.set_text(f"{format_bytes(vm.used)} / {format_bytes(vm.total)}  ·  {vm.percent:.0f}%")
         sm = psutil.swap_memory()
         self.swap_bar.set_fraction((sm.percent / 100.0) if sm.total else 0.0)
-        self.swap_bar.set_text(
-            f"{format_bytes(sm.used)} / {format_bytes(sm.total)} ({sm.percent:.0f}%)" if sm.total else "No swap"
+        self.swap_total_label.set_text(
+            f"{format_bytes(sm.used)} / {format_bytes(sm.total)}  ·  {sm.percent:.0f}%" if sm.total else "No swap"
         )
         self.mem_history.push([vm.percent, sm.percent if sm.total else 0.0])
         net = psutil.net_io_counters()
@@ -1416,37 +1688,55 @@ class SystemMonitorWindow(Gtk.Window):
             recv_rate = sent_rate = 0
         self.prev_net = (net.bytes_recv, net.bytes_sent, now)
         self.net_history.push([recv_rate, sent_rate])
-        self.net_recv_label.set_text(f"↓ {format_rate(recv_rate)}")
-        self.net_sent_label.set_text(f"↑ {format_rate(sent_rate)}")
+        self.net_recv_label.set_text(f"RX {format_rate(recv_rate)}")
+        self.net_sent_label.set_text(f"TX {format_rate(sent_rate)}")
         return True
     # ---------------------------------------------------------- FILESYSTEMS
 
     def _build_filesystems_tab(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
-        box.set_margin_top(12)
-        box.set_margin_bottom(24)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
+        box.set_margin_top(16)
+        box.set_margin_bottom(20)
         self.fs_store = Gtk.ListStore(str, str, str, str, str, str, int)
         self.fs_view = Gtk.TreeView(model=self.fs_store)
         self.fs_view.get_style_context().add_class("data-table")
         titles = ["DEVICE", "MOUNTPOINT", "TYPE", "TOTAL", "USED", "FREE"]
+        fs_tnum = tabular_attrs()
         for i, title in enumerate(titles):
-            renderer = Gtk.CellRendererText(xalign=0.0 if i < 2 else 1.0)
+            renderer = Gtk.CellRendererText(xalign=0.0 if i < 3 else 1.0)
+            renderer.set_padding(8, 4)
+            if i >= 3:
+                renderer.set_property("attributes", fs_tnum)
             col = Gtk.TreeViewColumn(title, renderer, text=i)
             col.set_resizable(True)
             col.set_expand(i == 1)
             self.fs_view.append_column(col)
-        pct_renderer = Gtk.CellRendererProgress()
-        pct_col = Gtk.TreeViewColumn("USED %", pct_renderer, value=6)
-        pct_col.set_min_width(140)
+        # Timetable style: the figure in tabular digits, then a thin bar.
+        # A handful of rows, so a data func here costs nothing.
+        pct_col = Gtk.TreeViewColumn("USED %")
+        pct_text = Gtk.CellRendererText(xalign=1.0)
+        pct_text.set_padding(8, 3)
+        pct_text.set_property("attributes", tabular_attrs())
+        pct_col.pack_start(pct_text, False)
+        pct_col.set_cell_data_func(
+            pct_text, lambda c, r, m, it, d: r.set_property("text", f"{m[it][6]}%"))
+        pct_renderer = Gtk.CellRendererProgress(text="")
+        pct_renderer.set_fixed_size(-1, 4)  # never sets the row height...
+        pct_renderer.set_padding(4, 8)      # ...and leaves a ~7px bar centred in it
+        pct_col.pack_start(pct_renderer, True)
+        pct_col.add_attribute(pct_renderer, "value", 6)
+        pct_col.set_min_width(160)
         self.fs_view.append_column(pct_col)
         table_scroller = Gtk.ScrolledWindow()
         table_scroller.set_size_request(-1, 170)  # fixed-ish: the breakdown below needs the real space
         table_scroller.add(self.fs_view)
         box.pack_start(table_scroller, False, False, 0)
         # -- disk usage breakdown (WizTree-style treemap, with a pie fallback)
-        box.pack_start(self._section_label("DISK USAGE BREAKDOWN"), False, False, 0)
+        breakdown = self._section_label("DISK USAGE BREAKDOWN")
+        breakdown.set_margin_top(14)
+        box.pack_start(breakdown, False, False, 0)
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self.fs_scan_button = Gtk.Button(label="Analyze Selected Disk")
         self.fs_scan_button.get_style_context().add_class("tree-toggle")
@@ -1470,23 +1760,23 @@ class SystemMonitorWindow(Gtk.Window):
         box.pack_start(toolbar, False, False, 4)
         viz_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         viz_box.set_vexpand(True)
-        self.fs_treemap = TreemapGraph()
+        self.fs_treemap = TreemapGraph(self.theme)
         self.fs_treemap.set_vexpand(True)
         viz_box.pack_start(self.fs_treemap, True, True, 0)
         self.fs_pie_container = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
         self.fs_pie_container.set_vexpand(True)
         self.fs_pie_container.set_no_show_all(True)
         self.fs_pie_container.set_visible(False)
-        self.fs_pie_graph = PieGraph()
+        self.fs_pie_graph = PieGraph(self.theme)
         self.fs_pie_graph.set_hexpand(True)
         self.fs_pie_graph.set_vexpand(True)
         self.fs_pie_container.pack_start(self.fs_pie_graph, True, True, 0)
         fs_legend_scroller = Gtk.ScrolledWindow()
-        fs_legend_scroller.set_size_request(300, -1)
+        fs_legend_scroller.set_size_request(320, -1)
         fs_legend_scroller.set_vexpand(True)
-        self.fs_pie_legend_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.fs_pie_legend_box.set_margin_top(4)
-        fs_legend_scroller.add(self.fs_pie_legend_box)
+        fs_side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        fs_legend_scroller.add(fs_side)
+        self.fs_pie_legend = self._build_legend(fs_side, FS_SCAN_TOP_N + 1)
         self.fs_pie_container.pack_start(fs_legend_scroller, False, False, 0)
         viz_box.pack_start(self.fs_pie_container, True, True, 0)
         box.pack_start(viz_box, True, True, 0)
@@ -1568,7 +1858,7 @@ class SystemMonitorWindow(Gtk.Window):
         self.fs_treemap.set_data(display_entries)
         slices = [(name, size) for name, size, _ in display_entries]
         self.fs_pie_graph.set_data(slices)
-        self._update_legend(self.fs_pie_legend_box, slices)
+        self._update_legend(self.fs_pie_legend, slices, fmt_value=format_bytes)
         prefix = "Cancelled — partial results. " if cancelled else ""
         self.fs_status_label.set_text(
             f"{prefix}{mountpoint}: {len(entries)} top-level items scanned in {elapsed:.1f}s"
@@ -1577,17 +1867,18 @@ class SystemMonitorWindow(Gtk.Window):
     # -------------------------------------------------------------- THEMES
 
     def _build_themes_tab(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
-        box.set_margin_top(12)
-        box.pack_start(self._section_label("SELECT A THEME"), False, False, 0)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
+        box.set_margin_top(16)
+        heading = self._section_label("SELECT A THEME")
+        heading.set_margin_bottom(6)
+        box.pack_start(heading, False, False, 0)
         self.theme_radios = {}
         group = None
         for theme in THEMES:
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-            row.set_margin_top(4)
-            row.set_margin_bottom(4)
+            row.get_style_context().add_class("zt-theme-row")
             radio = Gtk.RadioButton.new_from_widget(group)
             group = radio
             radio.set_active(theme["id"] == self.current_theme)
@@ -1601,9 +1892,11 @@ class SystemMonitorWindow(Gtk.Window):
             text_box.pack_start(name_lbl, False, False, 0)
             text_box.pack_start(desc_lbl, False, False, 0)
             row.pack_start(text_box, True, True, 0)
-            chips = Gtk.Box(spacing=6)
+            chips = Gtk.Box(spacing=4)
             for hex_color in theme["colors"]:
-                chips.pack_start(self._make_color_chip(hex_color), False, False, 0)
+                rgba = Gdk.RGBA()
+                rgba.parse(hex_color)
+                chips.pack_start(ColorChip((rgba.red, rgba.green, rgba.blue), size=16, outline=self.theme), False, False, 0)
             row.pack_start(chips, False, False, 0)
             # clicking anywhere on the row selects the theme, not just the radio dot
             event_box = Gtk.EventBox()
@@ -1614,24 +1907,12 @@ class SystemMonitorWindow(Gtk.Window):
             box.pack_start(event_box, False, False, 0)
         return box
 
-    def _make_color_chip(self, hex_color):
-        """Small color swatch that always shows ITS OWN theme's color,
-        regardless of which theme is currently active — done with a
-        provider scoped to this one widget instead of the app-wide CSS."""
-        chip = Gtk.Box()
-        chip.set_size_request(22, 22)
-        provider = Gtk.CssProvider()
-        css = (f"box {{ background-color: {hex_color}; border-radius: 4px; "
-               f"border: 1px solid rgba(128,128,128,0.45); }}").encode()
-        provider.load_from_data(css)
-        chip.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
-        return chip
-
     def _on_theme_radio_toggled(self, widget, theme_id):
         if widget.get_active():
             self._apply_theme(theme_id)
 
 def main():
+    register_app_fonts()
     win = SystemMonitorWindow()
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
