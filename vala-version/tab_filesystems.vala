@@ -1,0 +1,210 @@
+/* tab_filesystems.vala -- partition table plus the disk breakdown
+ * (treemap, or pie + legend). The table refreshes in place, so the
+ * selected partition survives the 5 s refresh; the scan runs on its own
+ * thread and can be cancelled. */
+
+const int FS_SCAN_TOP_N = 20; // tiles; the rest is grouped into "Others"
+
+public class FilesystemsTab : Gtk.Box {
+    private AppContext ctx;
+    private Gtk.ListStore store;
+    private Gtk.TreeView view;
+    private Gtk.Button scan_button;
+    private Gtk.Button cancel_button;
+    private Gtk.Spinner spinner;
+    private Gtk.Label status;
+    private TreemapGraph treemap;
+    private Gtk.Box pie_box;
+    private PieGraph pie;
+    private Legend legend;
+    private Cancellable? scan_cancel = null;
+    private string[] mount_order = new string[0];
+
+    public FilesystemsTab(AppContext ctx) {
+        Object(orientation: Gtk.Orientation.VERTICAL, spacing: 10);
+        this.ctx = ctx;
+        Ui.margins(this, 20, 20, 16, 20);
+        build_table();
+        build_breakdown();
+    }
+
+    private void build_table() {
+        // device, mountpoint, type, total, used, free, used % (int)
+        store = new Gtk.ListStore(7, typeof(string), typeof(string), typeof(string),
+                                  typeof(string), typeof(string), typeof(string), typeof(int));
+        view = new Gtk.TreeView.with_model(store);
+        view.get_style_context().add_class("data-table");
+        string[] titles = {"DEVICE", "MOUNTPOINT", "TYPE", "TOTAL", "USED", "FREE"};
+        for (int i = 0; i < titles.length; i++) {
+            var r = new Gtk.CellRendererText();
+            r.xalign = i < 3 ? 0.0f : 1.0f;
+            r.set_padding(8, 4);
+            if (i >= 3) r.attributes = ctx.tnum;
+            var col = new Gtk.TreeViewColumn.with_attributes(titles[i], r, "text", i);
+            col.resizable = true;
+            col.expand = i == 1;
+            view.append_column(col);
+        }
+        // timetable style: the figure in tabular digits, then a thin bar
+        var pct = new Gtk.TreeViewColumn();
+        pct.title = "USED %";
+        var pct_text = new Gtk.CellRendererText();
+        pct_text.xalign = 1.0f;
+        pct_text.set_padding(8, 3);
+        pct_text.attributes = ctx.tnum;
+        pct.pack_start(pct_text, false);
+        // a handful of rows, so a data func here costs nothing
+        pct.set_cell_data_func(pct_text, (c, cell, model, it) => {
+            Value v;
+            model.get_value(it, 6, out v);
+            ((Gtk.CellRendererText) cell).text = "%d%%".printf((int) v);
+        });
+        var pct_bar = new Gtk.CellRendererProgress();
+        pct_bar.text = "";
+        pct_bar.set_fixed_size(-1, 4);  // never sets the row height...
+        pct_bar.set_padding(4, 8);      // ...and leaves a ~7px bar centred in it
+        pct.pack_start(pct_bar, true);
+        pct.add_attribute(pct_bar, "value", 6);
+        pct.min_width = 160;
+        view.append_column(pct);
+        var scroller = new Gtk.ScrolledWindow(null, null);
+        scroller.set_size_request(-1, 170);
+        scroller.add(view);
+        pack_start(scroller, false, false, 0);
+    }
+
+    private void build_breakdown() {
+        var heading = Ui.section_label("DISK USAGE BREAKDOWN");
+        heading.margin_top = 14;
+        pack_start(heading, false, false, 0);
+
+        var bar = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 8);
+        scan_button = Ui.text_button("Analyze Selected Disk");
+        scan_button.clicked.connect(start_scan);
+        bar.pack_start(scan_button, false, false, 0);
+        cancel_button = Ui.text_button("Cancel");
+        cancel_button.clicked.connect(() => { if (scan_cancel != null) scan_cancel.cancel(); });
+        cancel_button.no_show_all = true;
+        bar.pack_start(cancel_button, false, false, 0);
+        var pie_toggle = new Gtk.ToggleButton.with_label("PIE VIEW");
+        pie_toggle.get_style_context().add_class("tree-toggle");
+        pie_toggle.toggled.connect(() => {
+            treemap.visible = !pie_toggle.active;
+            pie_box.visible = pie_toggle.active;
+        });
+        bar.pack_start(pie_toggle, false, false, 0);
+        spinner = new Gtk.Spinner();
+        bar.pack_start(spinner, false, false, 0);
+        status = Ui.label("Select a partition above, then Analyze.", "bar-label");
+        status.ellipsize = Pango.EllipsizeMode.END;
+        bar.pack_start(status, true, true, 0);
+        pack_start(bar, false, false, 4);
+
+        var viz = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+        viz.vexpand = true;
+        treemap = new TreemapGraph(ctx.theme);
+        treemap.vexpand = true;
+        viz.pack_start(treemap, true, true, 0);
+        pie_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 24);
+        pie_box.vexpand = true;
+        pie = new PieGraph(ctx.theme);
+        pie.hexpand = true;
+        pie.vexpand = true;
+        pie_box.pack_start(pie, true, true, 0);
+        var legend_scroller = new Gtk.ScrolledWindow(null, null);
+        legend_scroller.set_size_request(320, -1);
+        legend_scroller.vexpand = true;
+        legend = new Legend(ctx, FS_SCAN_TOP_N + 1);
+        legend_scroller.add(legend);
+        pie_box.pack_start(legend_scroller, false, false, 0);
+        pie_box.show_all();
+        pie_box.no_show_all = true;   // starts hidden; PIE VIEW reveals it
+        pie_box.hide();
+        viz.pack_start(pie_box, true, true, 0);
+        pack_start(viz, true, true, 0);
+    }
+
+    /* In place while the mount list is unchanged, so the selection stays. */
+    public void refresh() {
+        var parts = FsData.partitions();
+        var order = new string[parts.size];
+        for (int i = 0; i < parts.size; i++) order[i] = parts[i].mountpoint;
+        bool same = order.length == mount_order.length;
+        for (int i = 0; same && i < order.length; i++) same = order[i] == mount_order[i];
+        Gtk.TreeIter it;
+        if (!same) {
+            store.clear();
+            for (int i = 0; i < parts.size; i++) store.append(out it);
+            mount_order = order;
+        }
+        if (!store.get_iter_first(out it)) return;
+        foreach (var p in parts) {
+            store.set(it, 0, p.device, 1, p.mountpoint, 2, p.fstype,
+                      3, Fmt.bytes((int64) p.total), 4, Fmt.bytes((int64) p.used),
+                      5, Fmt.bytes((int64) p.free), 6, (int) p.percent, -1);
+            store.iter_next(ref it);
+        }
+    }
+
+    private void start_scan() {
+        if (scan_cancel != null) return;
+        Gtk.TreeModel model;
+        Gtk.TreeIter it;
+        if (!view.get_selection().get_selected(out model, out it)) {
+            ctx.show_error("Select a partition from the table above first.");
+            return;
+        }
+        Value v;
+        model.get_value(it, 1, out v);
+        string mountpoint = (string) v;
+        var cancel = new Cancellable();
+        scan_cancel = cancel;
+        scan_button.sensitive = false;
+        cancel_button.show();
+        spinner.start();
+        status.label = "Scanning %s... this can take a while on a big disk.".printf(mountpoint);
+        // pure filesystem walk; no GTK calls on that thread
+        new Thread<void*>("fs-scan", () => {
+            var timer = new Timer();
+            var entries = FsData.scan(mountpoint, cancel);
+            double elapsed = timer.elapsed();
+            Idle.add(() => { scan_done(entries, mountpoint, elapsed, cancel.is_cancelled()); return false; });
+            return null;
+        });
+    }
+
+    private void scan_done(Gee.ArrayList<ScanEntry>? entries, string mountpoint, double elapsed, bool cancelled) {
+        scan_cancel = null;
+        scan_button.sensitive = true;
+        cancel_button.hide();
+        spinner.stop();
+        if (entries == null) {
+            status.label = "Couldn't read %s (permission denied?).".printf(mountpoint);
+            return;
+        }
+        entries.sort((a, b) => a.size < b.size ? 1 : (a.size > b.size ? -1 : 0));
+        int top = int.min(FS_SCAN_TOP_N, entries.size);
+        uint64 others = 0;
+        for (int i = top; i < entries.size; i++) others += entries[i].size;
+        var shown = new ScanEntry[top + (others > 0 ? 1 : 0)];
+        for (int i = 0; i < top; i++) shown[i] = entries[i];
+        if (others > 0) shown[top] = new ScanEntry("Others (%d items)".printf(entries.size - top), others, false);
+        treemap.set_entries(shown);
+        var slices = new Slice[shown.length];
+        for (int i = 0; i < shown.length; i++) slices[i] = new Slice(shown[i].name, (double) shown[i].size);
+        pie.set_slices(slices);
+        legend.update(slices, true);
+        status.label = "%s%s: %d top-level items scanned in %.1fs".printf(
+            cancelled ? "Cancelled, partial results. " : "", mountpoint, entries.size, elapsed);
+    }
+
+    public void cancel_scan() {
+        if (scan_cancel != null) scan_cancel.cancel();
+    }
+
+    public void redraw() {
+        treemap.queue_draw();
+        pie.queue_draw();
+        legend.redraw_swatches();
+    }
+}

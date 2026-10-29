@@ -1,75 +1,91 @@
 # zentop
 
-A highly optimized, native Linux system monitor built with Python, GTK3, and `psutil`, with a native Vala rewrite in progress. It offers real-time performance tracking, advanced process management, a live consumption pie chart, a WizTree-style disk breakdown, and swappable themes.
+A highly optimized native Linux system monitor (GTK3). It comes in two versions:
+* **vala-version:** compiled native code, the fastest. Recommended.
+* **python-version:** Python + `psutil`, the original.
+
+Both versions show the same views and share settings and themes.
 
 ## Look
 
-zentop is typeset like a railway timetable. Every number uses tabular figures, hairline rules separate the columns, and a one-line header strip holds the wordmark, the tabs, and live CPU/MEM figures.
+zentop is typeset like a railway timetable:
+* Every number uses tabular figures.
+* Hairline rules separate the columns.
+* A one-line header strip holds the wordmark, the tabs and live CPU/MEM figures.
 
 Load is shown through type:
 * Idle values fade back.
 * Hot values (CPU ≥ 20%, memory ≥ 5%) turn bold in the theme's hot color.
 
-The themes avoid shadows, gradients and transitions, so the UI stays cheap to render. The full design system lives in `python-version/DESIGN.md`.
+The full design system lives in `python-version/DESIGN.md`.
 
 ## Key Features
 
-* **5 Main Views:**
-    * **Processes:** List or tree view with live stats: CPU, memory, disk I/O, status, priority, start time and CPU time.
-        * Sort by clicking any column header; click again to reverse.
-        * Search and All/My/Active filters.
-        * A pause button freezes the table while you browse.
-    * **Resources:** Cairo-drawn history graphs for CPU, memory + swap, and network, plus a per-core load board.
-    * **Pie Graph:** The top 10 processes by overall consumption (CPU% + memory%), with the rest grouped into "Others".
-    * **File Systems:** A partition table with usage bars, plus a treemap or pie breakdown of any disk.
-    * **Themes:** A live theme switcher. Your choice is remembered across restarts.
-* **Right-click process menu:**
+* **Processes:** List or tree view.
+    * Sort by any column.
+    * Search, plus All/My/Active filters.
+    * Pause the table while you browse.
+* **Resources:** History graphs for CPU, memory + swap and network, plus a per-core board.
+* **Pie Graph:** The top 10 processes by CPU% + memory%.
+* **File Systems:** A partition table, plus a WizTree-style treemap or pie of any disk.
+* **Themes:** 6 themes, switched live: Default (GitHub Dark), EVA-01, MAGI, EVA-00, EVA-02 and Pastel Pink.
+* **Right-click menu on a process:**
     * Pin to Top
     * End / Kill / Stop / Continue
-    * Priority, showing the current value
+    * Priority
     * CPU Affinity
     * Open File Location
     * Highlight Color
     * Properties
-* **Saved preferences** in `~/.config/system-monitor-pp/`.
-* **6 themes:** Default (GitHub Dark), EVA-01, MAGI, EVA-00, EVA-02, and Pastel Pink. Each theme is a single CSS file, and the graphs read their colors from it.
-* **Deeply optimized:**
-    * Process polling runs in a background thread.
-    * Only the visible tab is polled.
-    * Stores are updated in place.
-    * There are no per-cell Python callbacks, and widgets are built once and only updated afterwards.
+* **Settings** are saved in `~/.config/system-monitor-pp/`.
 
-## Installation (python-version)
+## Performance (vala-version)
+
+Measured over 60 s on the Processes tab, with about 370 processes running:
+
+| | CPU (of one core) | RAM |
+|---|---|---|
+| vala-version | 0.8% | 87 MB |
+| python-version | 3.7% | 111 MB |
+
+* **Background reads:** `/proc` is read on a background thread.
+* **Visible tab only:** only the tab on screen does any work, and nothing runs while the window is minimised.
+* **Table updates:** the table only redraws the rows that actually changed.
+* **Memory:** stays flat over long sessions.
+
+## vala-version
+
+```bash
+sudo apt install valac libgtk-3-dev libgee-0.8-dev libjson-glib-dev libfontconfig-dev
+cd vala-version
+bash build.sh
+./zentop
+```
+
+It uses the Inter font from `python-version/fonts/`.
+
+## python-version
 
 ```bash
 sudo apt install -y python3-gi python3-gi-cairo gir1.2-gtk-3.0 python3-pip
-pip install --break-system-packages -r requirements.txt
+pip install --break-system-packages -r python-version/requirements.txt
+cd python-version && python3 main.py
 ```
 
-zentop bundles the **Inter** font (SIL OFL) in `fonts/`. If the folder is empty, download the font with:
-
-```bash
-sh fonts/get-fonts.sh
-```
-
-Without Inter, zentop falls back to Noto Sans or Ubuntu.
-
-## Running
-
-```bash
-cd python-version
-python3 main.py
-```
+If `fonts/` is empty, run `sh fonts/get-fonts.sh`. Without Inter, zentop falls back to Noto Sans or Ubuntu.
 
 ## Directory Structure
 
 ```text
 zentop/
-├── python-version/
-│   ├── main.py            # App, UI and caching logic
-│   ├── requirements.txt
-│   ├── DESIGN.md          # Design system (tokens, rules)
-│   ├── fonts/             # Inter + get-fonts.sh
-│   └── themes/            # One CSS file per theme
-└── vala-version/          # Native rewrite (in progress)
+├── python-version/      main.py, DESIGN.md, fonts/, themes/
+└── vala-version/
+    ├── main.vala        entry point
+    ├── window.vala      header strip, tabs, 1 s scheduler
+    ├── tab_*.vala       one file per tab
+    ├── process_*.vala   /proc scan, worker thread, right-click actions
+    ├── *_data.vala      CPU/memory/network and disk readers
+    ├── graphs.vala      Cairo graphs, pie, treemap
+    ├── theme.vala       theme catalogue and color roles
+    └── themes/          one CSS file per theme
 ```

@@ -172,6 +172,8 @@ progressbar.swap-bar progress { background-color: #E4572E; }
 treeview.data-table progressbar { color: #E3F0F8; }
 treeview.data-table.trough { background-color: #12202F; background-image: none; border: none; }
 treeview.data-table.progressbar { background-color: #FF8C1A; background-image: none; border: none; color: #FFFFFF; }
+treeview.data-table.progressbar:selected, treeview.data-table.progressbar:selected:focus { background-color: #FF8C1A; }
+treeview.data-table.trough:selected, treeview.data-table.trough:selected:focus { background-color: #213448; }
 .net-recv-label { color: #FF8C1A; font-weight: 600; font-feature-settings: "tnum"; }
 .net-sent-label { color: #7FD4F0; font-weight: 600; font-feature-settings: "tnum"; }
 

@@ -1,154 +1,233 @@
-/* System Monitor ++ theme — PASTEL FUCSIA
-   Fondo rosa pálido con acentos fucsia y lavanda, todo en tonos pastel.
-   Primer tema de fondo CLARO — el texto pasa a ciruela oscuro para
-   mantener contraste legible en vez de blanco/verde/etc. */
+/* zentop theme: PASTEL PINK
+   Generated from one shared template so every theme has the same
+   structure; only the palette changes. Performance rules for all themes:
+   no transitions, no box-shadow, no gradients, no text-shadow -- each of
+   those makes GTK redraw more than it needs to. */
 
-window { background-color: #FDF0F5; }
-box.root-bg { background-color: #FDF0F5; }
-
-.title-label {
-    color: #E85CA6;
-    font-weight: 800;
-    font-size: 28px;
-    letter-spacing: 2px;
+/* ---- performance: kill default animations and effects ---- */
+button, entry, combobox button, menuitem, checkbutton check, radiobutton radio,
+scrollbar slider, treeview header button, stackswitcher button, spinbutton button,
+progressbar trough, progressbar progress {
+    transition: none;
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+    background-image: none;
 }
 
-.section-label {
-    color: #8C3A63;
-    font-weight: 700;
+/* ---- ground ---- */
+window, box.root-bg, dialog, scrolledwindow, viewport, stack {
+    background-color: #FDF0F5;
+    color: #3D1428;
+}
+window {
+    font-family: "Inter", "Noto Sans", "Ubuntu", sans-serif;
     font-size: 13px;
-    letter-spacing: 1px;
 }
+*:selected, selection { background-color: #F5BCD6; color: #3D1428; }
 
-.bar-label {
-    color: #B87A9E;
-    font-family: "JetBrains Mono", monospace;
-    font-size: 11px;
+/* ---- header strip: wordmark, tabs, live figures ---- */
+.zt-header {
+    background-color: #F8DCE8;
+    border-bottom: 1px solid #EBC6D7;
+    padding: 0 20px;
 }
-
+.title-label {
+    color: #3D1428;
+    font-weight: 800;
+    font-size: 14px;
+    letter-spacing: 3px;
+}
 stackswitcher.pill-switcher button {
     background-color: transparent;
-    background-image: none;
-    color: #B87A9E;
-    font-weight: 700;
-    font-size: 13px;
+    color: #7A4A62;
+    font-weight: 600;
+    font-size: 12px;
     letter-spacing: 1px;
-    border-radius: 8px;
     border: none;
-    box-shadow: none;
-    padding: 8px 22px;
-    margin: 0 4px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 15px 14px 13px 14px;
+    margin: 0;
+    min-height: 0;
+    min-width: 0;   /* Adwaita forces 100px; tabs should be as wide as their words */
 }
-
+stackswitcher.pill-switcher button:hover { color: #3D1428; }
 stackswitcher.pill-switcher button:checked {
-    background-color: #F2A6CB;
     color: #3D1428;
+    border-bottom-color: #E85CA6;
 }
+.zt-stat-key {
+    color: #7A4A62;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+.zt-stat-value {
+    color: #3D1428;
+    font-size: 13px;
+    font-weight: 600;
+    font-feature-settings: "tnum";
+}
+.zt-stat-value.zt-hot { color: #B0105A; font-weight: 700; }
 
-stackswitcher.pill-switcher button:hover {
+/* ---- toolbar controls (one control vocabulary everywhere) ---- */
+combobox button, button.tree-toggle, dialog button, .props-dialog button {
     background-color: #FBE6EF;
+    color: #3D1428;
+    border: 1px solid #EBC6D7;
+    border-radius: 4px;
+    padding: 3px 10px;
+    min-height: 24px;
 }
-
-combobox button, combobox box, .tree-toggle {
-    background-color: #F8DCE8;
-    background-image: none;
-    color: #8C3A63;
-    border: 1px solid #E8B8D0;
-    border-radius: 6px;
-    padding: 6px 10px;
-    box-shadow: none;
-}
-
-.tree-toggle:checked {
-    background-color: #F2A6CB;
+combobox button:hover, button.tree-toggle:hover, dialog button:hover { border-color: #D9A3BD; }
+button.tree-toggle:checked {
+    background-color: #F5BCD6;
     color: #3D1428;
     border-color: #E85CA6;
 }
+button.zt-icon-btn {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: #7A4A62;
+    padding: 3px 6px;
+    min-height: 24px;
+}
+button.zt-icon-btn:hover { color: #3D1428; border-color: #EBC6D7; }
+button.zt-icon-btn:checked { color: #B0105A; border-color: #E85CA6; }
+entry, .search-entry, spinbutton, spinbutton entry {
+    background-color: #FBE6EF;
+    color: #3D1428;
+    caret-color: #B0105A;
+    border: 1px solid #EBC6D7;
+    border-radius: 4px;
+    padding: 3px 10px;
+    min-height: 24px;
+}
+entry:focus, .search-entry:focus { border-color: #E85CA6; }
+entry image { color: #7A4A62; }
+entry selection { background-color: #F5BCD6; color: #3D1428; }
+.zt-count { color: #7A4A62; font-size: 12px; font-feature-settings: "tnum"; }
 
-.tree-toggle:hover, combobox button:hover { border-color: #E85CA6; }
-
+/* ---- tables: departure board ---- */
 treeview.data-table {
     background-color: #FDF0F5;
-    color: #5C1F3D;
-    font-family: "JetBrains Mono", monospace;
+    color: #3D1428;
     font-size: 13px;
 }
-
-treeview.data-table:selected {
-    background-color: #F2A6CB;
+treeview.data-table:hover { background-color: #FBE6EF; }
+treeview.data-table:selected, treeview.data-table:selected:focus {
+    background-color: #F5BCD6;
     color: #3D1428;
 }
-
 treeview.data-table header button {
-    background-color: #F8DCE8;
-    background-image: none;
-    color: #B87A9E;
-    font-weight: 700;
-    font-size: 12px;
-    letter-spacing: 0.5px;
+    background-color: #FDF0F5;
+    color: #7A4A62;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
     border: none;
+    border-bottom: 1px solid #EBC6D7;
     border-radius: 0;
-    box-shadow: none;
-    padding: 8px 10px;
+    padding: 7px 8px;
 }
+treeview.data-table header button:hover { color: #3D1428; }
+treeview.data-table header button arrow { color: #B0105A; }
+treeview.data-table.expander { color: #7A4A62; }
 
-progressbar {
-    min-height: 18px;
-    color: #4A1830;
-}
-progressbar trough { background-color: #F8DCE8; border-radius: 6px; border: none; }
-progressbar.cpu-bar progress { background-color: #E85CA6; border-radius: 6px; }
-progressbar.ram-bar progress { background-color: #C9A0DC; border-radius: 6px; }
-progressbar.swap-bar progress { background-color: #F4978E; border-radius: 6px; }
-
-.net-recv-label { color: #E85CA6; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
-.net-sent-label { color: #C9A0DC; font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 12px; }
-
-.search-entry, entry {
-    background-color: #F8DCE8;
-    color: #5C1F3D;
-    border: 1px solid #E8B8D0;
+/* ---- scrollbars ---- */
+scrollbar { background-color: transparent; border: none; }
+scrollbar slider {
+    background-color: #D9A3BD;
+    border: 2px solid transparent;
     border-radius: 6px;
-    padding: 6px 10px;
+    min-width: 6px;
+    min-height: 6px;
 }
+scrollbar slider:hover { background-color: #7A4A62; }
 
-.search-entry:focus, entry:focus {
+/* ---- section labels, meters ---- */
+.section-label {
+    color: #7A4A62;
+    font-size: 11px;
+    font-weight: 700;
+}
+.bar-label {
+    color: #7A4A62;
+    font-size: 12px;
+    font-feature-settings: "tnum";
+}
+progressbar { color: #7A4A62; font-size: 12px; font-feature-settings: "tnum"; }
+progressbar trough {
+    background-color: #FBE6EF;
+    border: none;
+    border-radius: 2px;
+    min-height: 6px;
+}
+progressbar progress { border: none; border-radius: 2px; min-height: 6px; }
+progressbar.cpu-bar progress { background-color: #E85CA6; }
+progressbar.ram-bar progress { background-color: #9C6FC7; }
+progressbar.swap-bar progress { background-color: #E8796D; }
+treeview.data-table progressbar { color: #3D1428; }
+treeview.data-table.trough { background-color: #FBE6EF; background-image: none; border: none; }
+treeview.data-table.progressbar { background-color: #E85CA6; background-image: none; border: none; color: #3D1428; }
+treeview.data-table.progressbar:selected, treeview.data-table.progressbar:selected:focus { background-color: #E85CA6; }
+treeview.data-table.trough:selected, treeview.data-table.trough:selected:focus { background-color: #EBC6D7; }
+.net-recv-label { color: #E85CA6; font-weight: 600; font-feature-settings: "tnum"; }
+.net-sent-label { color: #9C6FC7; font-weight: 600; font-feature-settings: "tnum"; }
+
+/* ---- menus, tooltips, dialogs ---- */
+menu, .context-menu {
+    background-color: #FFF7FA;
+    color: #3D1428;
+    border: 1px solid #EBC6D7;
+    padding: 4px 0;
+}
+menuitem { padding: 5px 14px; color: #3D1428; }
+menuitem:hover { background-color: #F5BCD6; color: #3D1428; }
+menuitem:disabled, menuitem:disabled label { color: #7A4A62; }
+menu separator { background-color: #EBC6D7; min-height: 1px; margin: 4px 0; }
+menuitem radio, menuitem check { color: #B0105A; }
+tooltip, tooltip.background {
+    background-color: #FFF7FA;
+    color: #3D1428;
+    border: 1px solid #EBC6D7;
+    border-radius: 4px;
+}
+.props-key { color: #7A4A62; font-size: 11px; font-weight: 600; }
+.props-value { color: #3D1428; font-size: 13px; font-feature-settings: "tnum"; }
+checkbutton check:checked, radiobutton radio:checked {
+    background-color: #E85CA6;
     border-color: #E85CA6;
-    box-shadow: 0 0 0 1px #E85CA6;
+    color: #FDF0F5;
 }
+checkbutton check, radiobutton radio { border: 1px solid #D9A3BD; background-color: #FBE6EF; }
 
-entry selection { background-color: #F2A6CB; color: #3D1428; }
+/* ---- themes tab ---- */
+.zt-theme-row { border-bottom: 1px solid #EBC6D7; padding: 10px 0; }
+.theme-name { color: #3D1428; font-weight: 600; font-size: 13px; }
+.theme-desc { color: #7A4A62; font-size: 12px; }
 
-menu, menuitem { background-color: #F8DCE8; color: #5C1F3D; }
-menuitem:hover { background-color: #F2A6CB; color: #3D1428; }
-
-.props-key { color: #B87A9E; font-weight: 700; font-size: 12px; }
-.props-value { color: #5C1F3D; font-family: "JetBrains Mono", monospace; font-size: 12px; }
-
-dialog, .props-dialog { background-color: #FDF0F5; color: #5C1F3D; }
-
-dialog button, .props-dialog button {
-    background-color: #F8DCE8;
-    background-image: none;
-    color: #5C1F3D;
-    border: 1px solid #E8B8D0;
-    border-radius: 6px;
-    padding: 6px 14px;
-    box-shadow: none;
-}
-dialog button:hover { border-color: #E85CA6; }
-
-checkbutton check:checked { background-color: #E85CA6; border-color: #E85CA6; }
-
-spinbutton, spinbutton entry {
-    background-color: #F8DCE8;
-    color: #5C1F3D;
-    border: 1px solid #E8B8D0;
-    border-radius: 6px;
-}
-
-scrolledwindow, viewport { background-color: #FDF0F5; }
-
-eventbox { background-color: transparent; }
-.theme-name { color: #5C1F3D; font-weight: 700; font-size: 14px; }
-.theme-desc { color: #B87A9E; font-size: 12px; }
+/* ---- roles read by the app for things Cairo draws (graphs, treemap,
+        load bands). Only `color` is read; these classes never land on
+        a visible widget. ---- */
+.zt-c-ink { color: #3D1428; }
+.zt-c-idle { color: #8C6178; }
+.zt-c-hot { color: #B0105A; }
+.zt-c-bg { color: #FDF0F5; }
+.zt-c-g-bg { color: #FBE6EF; }
+.zt-c-g-grid { color: #F0D2E0; }
+.zt-c-g-cpu { color: #E85CA6; }
+.zt-c-g-mem { color: #9C6FC7; }
+.zt-c-g-swap { color: #E8796D; }
+.zt-c-g-rx { color: #E85CA6; }
+.zt-c-g-tx { color: #9C6FC7; }
+.zt-c-s0 { color: #E85CA6; }
+.zt-c-s1 { color: #9C6FC7; }
+.zt-c-s2 { color: #E8796D; }
+.zt-c-s3 { color: #5FA8C9; }
+.zt-c-s4 { color: #D94B8C; }
+.zt-c-s5 { color: #B48ED6; }
+.zt-c-s6 { color: #F0A35E; }
+.zt-c-s7 { color: #4E9C86; }
