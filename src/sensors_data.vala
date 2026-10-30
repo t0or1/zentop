@@ -373,22 +373,28 @@ public class SensorHub : Object {
             nvml = Module.open("libnvidia-ml.so.1", ModuleFlags.LAZY | ModuleFlags.LOCAL);
             if (nvml == null) return;           // no NVIDIA driver: nothing to do
             void* sym;
-            if (!nvml.symbol("nvmlInit_v2", out sym) || ((NvmlInitFn) sym)() != 0) { nvml = null; return; }
+            if (!nvml.symbol("nvmlInit_v2", out sym)) { nvml = null; return; }
+            // cast into a variable first: valac 0.56's C generator can't call a cast expression directly
+            NvmlInitFn init = (NvmlInitFn) sym;
+            if (init() != 0) { nvml = null; return; }
         }
         void* sym;
         if (!nvml.symbol("nvmlDeviceGetCount_v2", out sym)) return;
         uint count;
-        if (((NvmlCountFn) sym)(out count) != 0) return;
+        NvmlCountFn get_count = (NvmlCountFn) sym;
+        if (get_count(out count) != 0) return;
         void* handle_sym = null, name_sym = null, power_sym = null, temp_sym = null;
         if (!nvml.symbol("nvmlDeviceGetHandleByIndex_v2", out handle_sym)) return;
         if (!nvml.symbol("nvmlDeviceGetName", out name_sym)) return;
         if (nvml.symbol("nvmlDeviceGetPowerUsage", out power_sym)) nv_power = (NvmlPowerFn) power_sym;
         if (nvml.symbol("nvmlDeviceGetTemperature", out temp_sym)) nv_temp = (NvmlTempFn) temp_sym;
+        NvmlHandleFn get_handle = (NvmlHandleFn) handle_sym;
+        NvmlNameFn get_name = (NvmlNameFn) name_sym;
         for (uint i = 0; i < count; i++) {
             void* dev;
-            if (((NvmlHandleFn) handle_sym)(i, out dev) != 0) continue;
+            if (get_handle(i, out dev) != 0) continue;
             char[] name = new char[96];
-            string gpu = ((NvmlNameFn) name_sym)(dev, (char*) name, 96) == 0 ? (string) name : "NVIDIA GPU";
+            string gpu = get_name(dev, (char*) name, 96) == 0 ? (string) name : "NVIDIA GPU";
             string group = count > 1 ? "GPU %u %s".printf(i + 1, gpu) : "GPU " + gpu;
             if (nv_power != null) {
                 var s = new Sensor();
