@@ -8,6 +8,10 @@
  *   shell: window */
 
 int main(string[] args) {
+    if (args.length > 1 && (args[1] == "--version" || args[1] == "-v")) {
+        print("zentop %s\n", ZENTOP_VERSION);
+        return 0;
+    }
     register_app_fonts(); // before any widget asks for a font
     raise_fd_limit();     // the process scan keeps one fd per process
     var app = new Gtk.Application("com.zentop.app", ApplicationFlags.DEFAULT_FLAGS);

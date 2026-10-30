@@ -60,13 +60,20 @@ bash install.sh
 
 To remove it again, run `bash install.sh --uninstall`.
 
-### RAPL power readings
+### RAPL power readings (CPU package, cores, DRAM)
 
-Since 2020, Linux lets only root read the RAPL energy counters. This was a fix for the PLATYPUS power side-channel. zentop lists these sensors as `no access` until you allow it. To allow it until the next reboot:
+Since 2020, the kernel lets only root read the RAPL energy counters. This was a fix for the PLATYPUS power side-channel. To let your user read them, without running zentop as root, run this once:
 
 ```bash
-sudo chmod o+r /sys/class/powercap/intel-rapl:*/energy_uj
+bash install.sh --rapl
 ```
+
+It asks for sudo once. It does three things:
+* creates a `rapl` group;
+* adds you to it;
+* installs a udev rule (`/etc/udev/rules.d/70-zentop-rapl.rules`) that makes the counters readable by that group at every boot.
+
+Log out and back in once, and the counters show up in Power Consumption. To undo it, run `bash install.sh --remove-rapl`.
 
 ## Performance
 

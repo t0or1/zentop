@@ -158,8 +158,21 @@ public class SensorsPage : Gtk.Box {
             : "No temperature sensors found. They come from hwmon drivers; running \"sudo sensors-detect\" (lm-sensors) can load the right ones.";
         empty.visible = none;
         bool hint = kind == SensorKind.POWER && hub.rapl_locked;
-        note.label = "RAPL counters (CPU package, cores, DRAM) are readable only by root since 2020, a fix for the PLATYPUS "
-                   + "power side-channel. To show them until the next reboot: sudo chmod o+r /sys/class/powercap/intel-rapl:*/energy_uj";
+        if (hint) {
+            switch (SensorHub.rapl_setup()) {
+                case RaplSetup.NOT_SET_UP:
+                    note.label = "RAPL counters (CPU package, cores, DRAM) are root-only since 2020, a fix for the PLATYPUS "
+                               + "power side-channel. To read them as your user, run once in the zentop folder: bash install.sh --rapl";
+                    break;
+                case RaplSetup.NEEDS_RELOGIN:
+                    note.label = "RAPL access is set up. Log out and back in (or reboot) so this session joins the rapl group.";
+                    break;
+                case RaplSetup.NEEDS_APPLY:
+                    note.label = "You're in the rapl group but the counters are still locked. Reboot once, or run: "
+                               + "sudo udevadm trigger --subsystem-match=powercap --action=add";
+                    break;
+            }
+        }
         note.visible = hint;
     }
 

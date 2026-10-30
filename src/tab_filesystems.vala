@@ -1,7 +1,9 @@
 /* tab_filesystems.vala -- partition table plus the disk breakdown
  * (treemap, or pie + legend). The table refreshes in place, so the
  * selected partition survives the 5 s refresh; the scan runs on its own
- * thread and can be cancelled. */
+ * thread and can be cancelled. Complete scans are cached on disk: on start
+ * the last analysed disk is selected and shown again, and selecting any
+ * disk with a cached result shows it at once, with its age. */
 
 const int FS_SCAN_TOP_N = 20; // tiles; the rest is grouped into "Others"
 
@@ -19,6 +21,9 @@ public class FilesystemsTab : Gtk.Box {
     private Legend legend;
     private Cancellable? scan_cancel = null;
     private string[] mount_order = new string[0];
+    private ScanCache cache = new ScanCache();
+    private Gee.HashMap<string, Partition> parts_now = new Gee.HashMap<string, Partition>();
+    private bool restored = false;      // the last analysed disk has been re-selected once
 
     public FilesystemsTab(AppContext ctx) {
         Object(orientation: Gtk.Orientation.VERTICAL, spacing: 10);
@@ -67,6 +72,7 @@ public class FilesystemsTab : Gtk.Box {
         pct.add_attribute(pct_bar, "value", 6);
         pct.min_width = 160;
         view.append_column(pct);
+        view.get_selection().changed.connect(on_selection_changed);
         var scroller = new Gtk.ScrolledWindow(null, null);
         scroller.set_size_request(-1, 170);
         scroller.add(view);
@@ -127,6 +133,8 @@ public class FilesystemsTab : Gtk.Box {
     /* In place while the mount list is unchanged, so the selection stays. */
     public void refresh() {
         var parts = FsData.partitions();
+        parts_now.clear();
+        foreach (var p in parts) parts_now[p.mountpoint] = p;
         var order = new string[parts.size];
         for (int i = 0; i < parts.size; i++) order[i] = parts[i].mountpoint;
         bool same = order.length == mount_order.length;
@@ -150,6 +158,77 @@ public class FilesystemsTab : Gtk.Box {
                           3, Fmt.bytes((int64) p.total), 4, used, 5, free, 6, (int) p.percent, -1);
             store.iter_next(ref it);
         }
+        if (!restored) restore_last();
+    }
+
+    /* First fill of the table: select the disk analysed last time, which
+     * shows its cached breakdown through on_selection_changed. */
+    private void restore_last() {
+        restored = true;
+        if (cache.last == null) return;
+        int i = 0;
+        foreach (var mp in mount_order) {
+            if (mp == cache.last) {
+                view.get_selection().select_path(new Gtk.TreePath.from_indices(i));
+                return;
+            }
+            i++;
+        }
+    }
+
+    private string? selected_mountpoint() {
+        Gtk.TreeModel model;
+        Gtk.TreeIter it;
+        if (!view.get_selection().get_selected(out model, out it)) return null;
+        Value v;
+        model.get_value(it, 1, out v);
+        return (string) v;
+    }
+
+    /* Show the cached result for the selected disk, or say there is none. */
+    private void on_selection_changed() {
+        if (scan_cancel != null) return;           // a scan is running: its status stays
+        string? mp = selected_mountpoint();
+        if (mp == null) return;
+        var c = cache.get_scan(mp);
+        if (c == null) {
+            show_entries(new Gee.ArrayList<ScanEntry>());
+            status.label = "%s hasn't been analysed yet: Analyze Selected Disk.".printf(mp);
+            return;
+        }
+        show_entries(c.entries);
+        string line = "%s: %s, analysed %s (took %.1fs).".printf(
+            mp, items(c.entries.size), ScanCache.age(c.scanned_at), c.seconds);
+        // flag results the disk has since moved away from
+        var p = parts_now[mp];
+        if (p != null) {
+            int64 delta = (int64) p.used - (int64) c.used_then;
+            uint64 threshold = uint64.max(p.total / 100, 50 * 1024 * 1024);   // 1% of the disk, at least 50 MB
+            if ((uint64) (delta < 0 ? -delta : delta) >= threshold)
+                line += " Usage changed by %s%s since; analyse again for current sizes.".printf(
+                    delta > 0 ? "+" : "-", Fmt.bytes(delta < 0 ? -delta : delta));
+        }
+        status.label = line;
+    }
+
+    private static string items(int n) {
+        return n == 1 ? "1 top-level item" : "%d top-level items".printf(n);
+    }
+
+    /* Top tiles plus one "Others" for the rest; entries arrive biggest first. */
+    private void show_entries(Gee.List<ScanEntry> entries) {
+        int top = int.min(FS_SCAN_TOP_N, entries.size);
+        uint64 others = 0;
+        int other_items = 0;
+        for (int i = top; i < entries.size; i++) { others += entries[i].size; other_items++; }
+        var shown = new ScanEntry[top + (others > 0 ? 1 : 0)];
+        for (int i = 0; i < top; i++) shown[i] = entries[i];
+        if (others > 0) shown[top] = new ScanEntry("Others (%d items)".printf(other_items), others, false);
+        treemap.set_entries(shown);
+        var slices = new Slice[shown.length];
+        for (int i = 0; i < shown.length; i++) slices[i] = new Slice(shown[i].name, (double) shown[i].size);
+        pie.set_slices(slices);
+        legend.update(slices, true);
     }
 
     private void start_scan() {
@@ -189,19 +268,16 @@ public class FilesystemsTab : Gtk.Box {
             return;
         }
         entries.sort((a, b) => a.size < b.size ? 1 : (a.size > b.size ? -1 : 0));
-        int top = int.min(FS_SCAN_TOP_N, entries.size);
-        uint64 others = 0;
-        for (int i = top; i < entries.size; i++) others += entries[i].size;
-        var shown = new ScanEntry[top + (others > 0 ? 1 : 0)];
-        for (int i = 0; i < top; i++) shown[i] = entries[i];
-        if (others > 0) shown[top] = new ScanEntry("Others (%d items)".printf(entries.size - top), others, false);
-        treemap.set_entries(shown);
-        var slices = new Slice[shown.length];
-        for (int i = 0; i < shown.length; i++) slices[i] = new Slice(shown[i].name, (double) shown[i].size);
-        pie.set_slices(slices);
-        legend.update(slices, true);
-        status.label = "%s%s: %d top-level items scanned in %.1fs".printf(
-            cancelled ? "Cancelled, partial results. " : "", mountpoint, entries.size, elapsed);
+        show_entries(entries);
+        if (cancelled) {
+            // partial: shown, but never cached over a complete result
+            status.label = "Cancelled, partial results for %s (not saved).".printf(mountpoint);
+            return;
+        }
+        var p = parts_now[mountpoint];
+        cache.put(mountpoint, entries, elapsed, p != null ? p.used : 0);
+        status.label = "%s: %s scanned in %.1fs. Saved for next time.".printf(
+            mountpoint, items(entries.size), elapsed);
     }
 
     public void cancel_scan() {

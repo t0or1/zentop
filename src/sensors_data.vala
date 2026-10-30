@@ -14,6 +14,16 @@
 
 public enum SensorKind { POWER, TEMP }
 
+/* Why RAPL is still locked, so the page can say what to do next. */
+public enum RaplSetup {
+    NOT_SET_UP,       // no udev rule yet: run install.sh --rapl
+    NEEDS_RELOGIN,    // rule and group exist, this session predates the group
+    NEEDS_APPLY       // session is in the group but the files weren't re-permissioned yet
+}
+
+[CCode (cname = "getgroups", cheader_filename = "unistd.h")]
+private extern int c_getgroups(int size, [CCode (array_length = false)] Posix.gid_t[]? list);
+
 private enum ReadMode { DIRECT, ENERGY, CURRENT_X_VOLTAGE, NVML_POWER, NVML_TEMP }
 
 public class Sensor {
@@ -143,6 +153,22 @@ public class SensorHub : Object {
         int64 v;
         if (!int64.try_parse(s, out v)) return double.NAN;
         return v * scale;
+    }
+
+    /* Only meaningful while rapl_locked. Checks the rule install.sh writes
+     * (or the hand-made 70-intel-rapl.rules) and this process's groups. */
+    public static RaplSetup rapl_setup() {
+        bool rule = FileUtils.test("/etc/udev/rules.d/70-zentop-rapl.rules", FileTest.EXISTS) ||
+                    FileUtils.test("/etc/udev/rules.d/70-intel-rapl.rules", FileTest.EXISTS);
+        unowned Posix.Group? g = Posix.getgrnam("rapl");
+        if (!rule || g == null) return RaplSetup.NOT_SET_UP;
+        int n = c_getgroups(0, null);
+        if (n > 0) {
+            var list = new Posix.gid_t[n];
+            n = c_getgroups(n, list);
+            for (int i = 0; i < n; i++) if (list[i] == g.gr_gid) return RaplSetup.NEEDS_APPLY;
+        }
+        return RaplSetup.NEEDS_RELOGIN;
     }
 
     // ------------------------------------------------------------- discovery
