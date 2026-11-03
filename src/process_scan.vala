@@ -307,8 +307,8 @@ public class ProcessCache : Object {
             return;
         }
         buf[n] = 0;
-        int64 rd = io_field((string) buf, "read_bytes: ");
-        int64 wr = io_field((string) buf, "write_bytes: ");
+        int64 rd = io_field((string) buf, (int) n, "read_bytes: ");
+        int64 wr = io_field((string) buf, (int) n, "write_bytes: ");
         if (rd < 0 || wr < 0) return;
         if (st.io_read >= 0 && now > st.io_at) {
             double dt = now - st.io_at;
@@ -322,11 +322,12 @@ public class ProcessCache : Object {
         st.io_at = now;
     }
 
-    private static int64 io_field(string text, string key) {
+    /* `len`: the bytes read, so the digit loop doesn't strlen() per step. */
+    private static int64 io_field(string text, int len, string key) {
         int at = text.index_of(key);
         if (at < 0) return -1;
         int64 v = 0;
-        for (int i = at + key.length; i < text.length && text[i].isdigit(); i++) v = v * 10 + (text[i] - '0');
+        for (int i = at + key.length; i < len && text[i].isdigit(); i++) v = v * 10 + (text[i] - '0');
         return v;
     }
 }

@@ -29,13 +29,24 @@ public class ThemeColors : Object {
     private Gee.HashMap<string, Gdk.RGBA?> colors = new Gee.HashMap<string, Gdk.RGBA?>();
     private Gee.HashMap<string, string> hexes = new Gee.HashMap<string, string>();
     private Gdk.RGBA fallback = Gdk.RGBA() { red = 0.5, green = 0.5, blue = 0.5, alpha = 1 };
+    /* Table ink by Ink code, filled from the roles; read per cell. */
+    public Gdk.RGBA[] inks = new Gdk.RGBA[Ink.N];
+    /* Bumped on every style update (theme switch, focus in/out), so
+     * anything caching a style lookup knows to look again. */
+    public uint generation = 0;
+
+    public ThemeColors() {
+        inks[Ink.BLACK] = Gdk.RGBA() { red = 0, green = 0, blue = 0, alpha = 1 };
+        inks[Ink.WHITE] = Gdk.RGBA() { red = 1, green = 1, blue = 1, alpha = 1 };
+        inks[Ink.IDLE] = inks[Ink.HOT] = fallback;
+    }
 
     public Gdk.RGBA get_role(string role) {
         var c = colors[role];
         return c != null ? c : fallback;
     }
 
-    /* "#RRGGBB", for TreeView "foreground" columns. */
+    /* "#RRGGBB", for pixbuf swatches. */
     public string hex(string role) {
         var h = hexes[role];
         return h != null ? h : "#808080";
@@ -44,6 +55,7 @@ public class ThemeColors : Object {
     /* ~20 style lookups; runs at start and when the stylesheet changes,
      * never per tick. Returns true if any colour moved. */
     public bool read_from(Gtk.StyleContext ctx) {
+        generation++;
         bool changed = false;
         foreach (unowned string role in COLOR_ROLES) {
             ctx.save();
@@ -56,6 +68,10 @@ public class ThemeColors : Object {
             hexes[role] = "#%02X%02X%02X".printf((int) Math.round(c.red * 255),
                 (int) Math.round(c.green * 255), (int) Math.round(c.blue * 255));
             changed = true;
+        }
+        if (changed) {
+            inks[Ink.IDLE] = get_role("idle");
+            inks[Ink.HOT] = get_role("hot");
         }
         return changed;
     }

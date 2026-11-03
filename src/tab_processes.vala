@@ -1,7 +1,8 @@
 /* tab_processes.vala -- the process table (flat or tree), its toolbar and
  * the "load band" typesetting: idle figures fade back, hot ones go bold in
- * the theme's hot ink. Colours and weights live in model columns bound to
- * the renderers, so drawing runs no per-cell code.
+ * the theme's hot ink. Each cell's ink and weight is one int column (see
+ * table_text.vala): resolved against the theme when drawn, so a theme
+ * switch rewrites nothing.
  *
  * Flat mode never reorders the store. Its rows are screen positions
  * ("slots"): each tick writes into slot i the process that now sorts i-th,
@@ -22,8 +23,9 @@ const int WEIGHT_BOLD = 700;
 public class ProcessesTab : Gtk.Box {
     enum Col {
         PID, PROCESS, USER, CPU, CPUID, MEMORY, DISKREADTOTAL, DISKWRITETOTAL,
-        DISKREAD, DISKWRITE, PRIORITY, STATUS, STARTED, CPUTIME, BG, FG,
-        PIN, CPU_FG, CPU_WT, MEM_FG, MEM_WT, RD_FG, WR_FG, NAME_WT, N
+        DISKREAD, DISKWRITE, PRIORITY, STATUS, STARTED, CPUTIME, BG, PIN,
+        // cell_style() ints: the row's plain ink, then the cells that differ
+        ST_ROW, ST_NAME, ST_CPU, ST_MEM, ST_RD, ST_WR, N
     }
     private const string[] TITLES = {
         "PROCESS", "USER", "CPU", "CPUID", "MEMORY", "DISKREADTOTAL", "DISKWRITETOTAL",
@@ -121,7 +123,8 @@ public class ProcessesTab : Gtk.Box {
     private void build_table() {
         var types = new Type[Col.N];
         for (int i = 0; i < Col.N; i++) types[i] = typeof(string);
-        types[Col.PID] = types[Col.CPU_WT] = types[Col.MEM_WT] = types[Col.NAME_WT] = typeof(int);
+        types[Col.PID] = typeof(int);
+        for (int i = Col.ST_ROW; i < Col.N; i++) types[i] = typeof(int);
         flat_store = new Gtk.ListStore.newv(types);
         tree_store = new Gtk.TreeStore.newv(types);
         filter = new Gtk.TreeModelFilter(flat_store, null);
@@ -143,50 +146,21 @@ public class ProcessesTab : Gtk.Box {
         for (int i = 0; i < TITLES.length; i++) {
             int idx = i + 1;
             bool text_col = idx == Col.PROCESS || idx == Col.USER || idx == Col.STATUS;
-            var r = new Gtk.CellRendererText();
-            r.xalign = text_col ? 0.0f : 1.0f;
-            r.set_padding(8, 3);
-            if (!text_col) r.attributes = ctx.tnum;
+            var r = new TableText(ctx.theme, text_col ? 0.0f : 1.0f, text_col ? null : ctx.tnum);
             var col = new Gtk.TreeViewColumn();
             col.title = TITLES[i];
-            // PROCESS: the name takes only its own width so the pin sits right after it
-            col.pack_start(r, idx != Col.PROCESS);
-            col.add_attribute(r, "text", idx);
-            col.add_attribute(r, "background", Col.BG);
+            col.pack_start(r, true);
+            int style_col;
             switch (idx) {
-                case Col.PROCESS:
-                    var pin = new Gtk.CellRendererPixbuf();
-                    pin.set_padding(6, 0);
-                    pin.set_alignment(0.0f, 0.5f);
-                    col.pack_start(pin, true);
-                    // don't line cells up across rows, or every pin sits past the longest name
-                    foreach (Gtk.CellRenderer cell in new Gtk.CellRenderer[] {r, pin}) {
-                        col.get_area().cell_set_property(cell, "align", false);
-                        col.get_area().cell_set_property(cell, "fixed-size", false);
-                    }
-                    col.add_attribute(pin, "icon-name", Col.PIN);
-                    col.add_attribute(pin, "cell-background", Col.BG);
-                    col.add_attribute(r, "foreground", Col.FG);
-                    col.add_attribute(r, "weight", Col.NAME_WT);
-                    break;
-                case Col.CPU:
-                    col.add_attribute(r, "foreground", Col.CPU_FG);
-                    col.add_attribute(r, "weight", Col.CPU_WT);
-                    break;
-                case Col.MEMORY:
-                    col.add_attribute(r, "foreground", Col.MEM_FG);
-                    col.add_attribute(r, "weight", Col.MEM_WT);
-                    break;
-                case Col.DISKREAD:
-                    col.add_attribute(r, "foreground", Col.RD_FG);
-                    break;
-                case Col.DISKWRITE:
-                    col.add_attribute(r, "foreground", Col.WR_FG);
-                    break;
-                default:
-                    col.add_attribute(r, "foreground", Col.FG);
-                    break;
+                case Col.PROCESS: style_col = Col.ST_NAME; break;
+                case Col.CPU: style_col = Col.ST_CPU; break;
+                case Col.MEMORY: style_col = Col.ST_MEM; break;
+                case Col.DISKREAD: style_col = Col.ST_RD; break;
+                case Col.DISKWRITE: style_col = Col.ST_WR; break;
+                default: style_col = Col.ST_ROW; break;
             }
+            if (idx == Col.PROCESS) r.bind_with_icon(col, idx, style_col, Col.BG, Col.PIN, ctx.pin_icon);
+            else r.bind(col, idx, style_col, Col.BG);
             col.resizable = true;
             col.expand = idx == Col.PROCESS;
             col.clickable = true;
@@ -232,9 +206,10 @@ public class ProcessesTab : Gtk.Box {
         refresh_wanted();
     }
 
-    /* Theme colours changed: every row must be rewritten next tick. */
+    /* Theme colours changed. Cells hold ink codes, not colours: a redraw
+     * picks up the new theme, nothing is rewritten. */
     public void invalidate() {
-        for (int i = 0; i < slots.size; i++) slots[i] = null;
+        view.queue_draw();
     }
 
     // ------------------------------------------------------------- sort
@@ -342,27 +317,27 @@ public class ProcessesTab : Gtk.Box {
 
     private Value[] values_for(ProcessRow r) {
         string? bg = r.highlight_color;
-        string? fg = null, cpu_fg = null, mem_fg = null, rd_fg = null, wr_fg = null;
         double mem_pct = r.mem * 100.0 / ctx.total_mem;
+        bool cpu_hot = r.cpu >= CPU_HOT_FROM, mem_hot = mem_pct >= MEM_HOT_FROM;
+        Ink row = Ink.DEFAULT, cpu, mem, rd, wr;
         if (bg != null) {
             // highlighted row: one readable ink for every cell on its colour
-            fg = cpu_fg = mem_fg = rd_fg = wr_fg = Fmt.contrast_ink(bg);
+            row = cpu = mem = rd = wr = Fmt.contrast_ink(bg);
         } else {
-            string idle = ctx.theme.hex("idle"), hot = ctx.theme.hex("hot");
-            cpu_fg = r.cpu < CPU_IDLE_BELOW ? idle : (r.cpu >= CPU_HOT_FROM ? hot : null);
-            mem_fg = mem_pct < MEM_IDLE_BELOW ? idle : (mem_pct >= MEM_HOT_FROM ? hot : null);
-            rd_fg = r.read_rate > 0 ? null : idle;
-            wr_fg = r.write_rate > 0 ? null : idle;
+            cpu = r.cpu < CPU_IDLE_BELOW ? Ink.IDLE : (cpu_hot ? Ink.HOT : Ink.DEFAULT);
+            mem = mem_pct < MEM_IDLE_BELOW ? Ink.IDLE : (mem_hot ? Ink.HOT : Ink.DEFAULT);
+            rd = r.read_rate > 0 ? Ink.DEFAULT : Ink.IDLE;
+            wr = r.write_rate > 0 ? Ink.DEFAULT : Ink.IDLE;
         }
         Value[] v = {
             r.pid, r.name, r.user, "%.1f%%".printf(r.cpu), r.cpuid >= 0 ? r.cpuid.to_string() : "-",
             Fmt.bytes((int64) r.mem), Fmt.bytes(r.read_total), Fmt.bytes(r.write_total),
             Fmt.rate(r.read_rate), Fmt.rate(r.write_rate), r.priority.to_string(), r.status,
-            r.started, Fmt.duration(r.cputime), bg, fg,
-            r.pinned ? ctx.pin_icon : null,
-            cpu_fg, r.cpu >= CPU_HOT_FROM ? WEIGHT_BOLD : WEIGHT_NORMAL,
-            mem_fg, mem_pct >= MEM_HOT_FROM ? WEIGHT_BOLD : WEIGHT_NORMAL,
-            rd_fg, wr_fg, r.pinned ? WEIGHT_SEMIBOLD : WEIGHT_NORMAL
+            r.started, Fmt.duration(r.cputime), bg, r.pinned ? ctx.pin_icon : null,
+            cell_style(row), cell_style(row, r.pinned ? WEIGHT_SEMIBOLD : WEIGHT_NORMAL),
+            cell_style(cpu, cpu_hot ? WEIGHT_BOLD : WEIGHT_NORMAL),
+            cell_style(mem, mem_hot ? WEIGHT_BOLD : WEIGHT_NORMAL),
+            cell_style(rd), cell_style(wr)
         };
         return v;
     }
@@ -416,6 +391,11 @@ public class ProcessesTab : Gtk.Box {
             col.fixed_width = i == 0 ? 200 : w + 8;
         }
         view.fixed_height_mode = true;
+        // GTK only recomputes the expanding column's share of spare width
+        // after a row validation; without one it keeps the share it gave
+        // the autosized layout, and the columns overflow the view. Asking
+        // for a resize validates once and settles it.
+        columns[0].queue_resize();
     }
 
     /* Move the highlight to wherever the selected process went. */

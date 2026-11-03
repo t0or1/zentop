@@ -8,7 +8,7 @@
 const double TEMP_HOT_FALLBACK = 85.0;  // when a driver gives no threshold
 
 public class SensorsPage : Gtk.Box {
-    enum Col { CHIP, NAME, SOURCE, NOW, C1, C2, C3, C4, NOW_FG, NOW_WT, NAME_WT, CHIP_PIX, N }
+    enum Col { CHIP, NAME, SOURCE, NOW, C1, C2, C3, C4, ST_NAME, ST_NOW, CHIP_PIX, N }
 
     private AppContext ctx;
     private SensorHub hub;
@@ -37,7 +37,7 @@ public class SensorsPage : Gtk.Box {
 
         var types = new Type[Col.N];
         for (int i = 0; i < Col.N; i++) types[i] = typeof(string);
-        types[Col.NOW_WT] = types[Col.NAME_WT] = typeof(int);
+        types[Col.ST_NAME] = types[Col.ST_NOW] = typeof(int);
         types[Col.CHIP_PIX] = typeof(Gdk.Pixbuf);
         store = new Gtk.TreeStore.newv(types);
         view = new Gtk.TreeView.with_model(store);
@@ -84,18 +84,10 @@ public class SensorsPage : Gtk.Box {
                 view.append_column(col);
                 continue;
             }
-            var r = new Gtk.CellRendererText();
-            col.pack_start(r, true);
-            r.set_padding(8, 3);
-            col.add_attribute(r, "text", i);
             bool numeric = i >= Col.NOW;
-            r.xalign = numeric ? 1.0f : 0.0f;
-            if (numeric) r.attributes = ctx.tnum;
-            if (i == Col.NAME) col.add_attribute(r, "weight", Col.NAME_WT);
-            if (i == Col.NOW) {
-                col.add_attribute(r, "foreground", Col.NOW_FG);
-                col.add_attribute(r, "weight", Col.NOW_WT);
-            }
+            var r = new TableText(ctx.theme, numeric ? 1.0f : 0.0f, numeric ? ctx.tnum : null);
+            col.pack_start(r, true);
+            r.bind(col, i, i == Col.NAME ? (int) Col.ST_NAME : (i == Col.NOW ? (int) Col.ST_NOW : -1));
             // Fixed widths + fixed-height mode: a changed figure redraws its row
             // without GTK re-measuring rows and columns (that was ~1/4 of
             // this page's CPU). The widths fit "142.35 W" and "100.0°C".
@@ -124,14 +116,14 @@ public class SensorsPage : Gtk.Box {
         foreach (var g in groups) {
             Gtk.TreeIter parent;
             store.append(out parent, null);
-            store.set(parent, Col.NAME, g, Col.NAME_WT, 700, Col.NOW_WT, 400, -1);
+            store.set(parent, Col.NAME, g, Col.ST_NAME, cell_style(Ink.DEFAULT, WEIGHT_BOLD), Col.ST_NOW, 0, -1);
             Sensor? lead = null;
             foreach (var s in list) {
                 if (s.group != g) continue;
                 if (lead == null && !s.locked && leads.size < 8) { lead = s; leads.add(s); }
                 Gtk.TreeIter it;
                 store.append(out it, parent);
-                store.set(it, Col.NAME, s.label, Col.SOURCE, s.source, Col.NAME_WT, 400, Col.NOW_WT, 400,
+                store.set(it, Col.NAME, s.label, Col.SOURCE, s.source, Col.ST_NAME, 0, Col.ST_NOW, 0,
                           Col.CHIP_PIX, lead == s ? swatch(SERIES[leads.size - 1]) : null, -1);
                 ordered.add(s);
                 iters.add(it);
@@ -210,16 +202,22 @@ public class SensorsPage : Gtk.Box {
         if ((string?) v != text) store.set(it, col, text, -1);
     }
 
+    /* A write redraws the row: only when the look really changes. */
+    private void set_now_style(Gtk.TreeIter it, int style) {
+        Value v;
+        store.get_value(it, Col.ST_NOW, out v);
+        if ((int) v != style) store.set(it, Col.ST_NOW, style, -1);
+    }
+
     /* One sample of this page's kind, then only the changed cells. */
     public void refresh() {
         hub.sample(kind);
-        string idle = ctx.theme.hex("idle"), hot = ctx.theme.hex("hot");
         for (int i = 0; i < ordered.size; i++) {
             var s = ordered[i];
             var it = iters[i];
             if (s.locked) {
                 set_cell(it, Col.NOW, "no access");
-                store.set(it, Col.NOW_FG, idle, -1);
+                set_now_style(it, cell_style(Ink.IDLE));
                 continue;
             }
             string label = s.note != null && s.note != "" && s.note != "unknown" ? "%s (%s)".printf(s.label, s.note) : s.label;
@@ -233,11 +231,7 @@ public class SensorsPage : Gtk.Box {
                 set_cell(it, Col.C2, fmt_value(s.peak, kind));
                 set_cell(it, Col.C3, fmt_value(s.high, kind));
                 set_cell(it, Col.C4, fmt_value(s.crit, kind));
-                bool h = is_hot(s);
-                Value cur;
-                store.get_value(it, Col.NOW_WT, out cur);
-                if (((int) cur == WEIGHT_BOLD) != h)
-                    store.set(it, Col.NOW_FG, h ? hot : null, Col.NOW_WT, h ? WEIGHT_BOLD : WEIGHT_NORMAL, -1);
+                set_now_style(it, is_hot(s) ? cell_style(Ink.HOT, WEIGHT_BOLD) : 0);
             }
         }
         if (graph != null) {
@@ -262,14 +256,12 @@ public class SensorsPage : Gtk.Box {
         return false;
     }
 
-    /* Theme changed: swatches and hot ink are colours from the theme. */
+    /* Theme changed: the swatches are pixbufs in the theme's colours; the
+     * text inks are codes, resolved at draw time. */
     public void redraw() {
-        for (int i = 0, lead = 0; i < ordered.size; i++) {
-            if (lead < leads.size && ordered[i] == leads[lead])
-                store.set(iters[i], Col.CHIP_PIX, swatch(SERIES[lead++]), -1);
-            // back to plain ink; the next refresh re-applies the new theme's hot ink
-            store.set(iters[i], Col.NOW_FG, null, Col.NOW_WT, WEIGHT_NORMAL, -1);
-        }
+        for (int i = 0, lead = 0; i < ordered.size && lead < leads.size; i++)
+            if (ordered[i] == leads[lead]) store.set(iters[i], Col.CHIP_PIX, swatch(SERIES[lead++]), -1);
+        view.queue_draw();
         if (graph != null) graph.queue_draw();
     }
 }

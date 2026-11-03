@@ -41,11 +41,11 @@ public class FilesystemsTab : Gtk.Box {
         view.get_style_context().add_class("data-table");
         string[] titles = {"DEVICE", "MOUNTPOINT", "TYPE", "TOTAL", "USED", "FREE"};
         for (int i = 0; i < titles.length; i++) {
-            var r = new Gtk.CellRendererText();
-            r.xalign = i < 3 ? 0.0f : 1.0f;
-            r.set_padding(8, 4);
-            if (i >= 3) r.attributes = ctx.tnum;
-            var col = new Gtk.TreeViewColumn.with_attributes(titles[i], r, "text", i);
+            var r = new TableText(ctx.theme, i < 3 ? 0.0f : 1.0f, i >= 3 ? ctx.tnum : null, 8, 4);
+            var col = new Gtk.TreeViewColumn();
+            col.title = titles[i];
+            col.pack_start(r, true);
+            r.bind(col, i);
             col.resizable = true;
             col.expand = i == 1;
             view.append_column(col);
@@ -53,16 +53,12 @@ public class FilesystemsTab : Gtk.Box {
         // timetable style: the figure in tabular digits, then a thin bar
         var pct = new Gtk.TreeViewColumn();
         pct.title = "USED %";
-        var pct_text = new Gtk.CellRendererText();
-        pct_text.xalign = 1.0f;
-        pct_text.set_padding(8, 3);
-        pct_text.attributes = ctx.tnum;
+        var pct_text = new TableText(ctx.theme, 1.0f, ctx.tnum);
         pct.pack_start(pct_text, false);
-        // a handful of rows, so a data func here costs nothing
         pct.set_cell_data_func(pct_text, (c, cell, model, it) => {
             Value v;
             model.get_value(it, 6, out v);
-            ((Gtk.CellRendererText) cell).text = "%d%%".printf((int) v);
+            pct_text.set_text("%d%%".printf((int) v));
         });
         var pct_bar = new Gtk.CellRendererProgress();
         pct_bar.text = "";

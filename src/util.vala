@@ -43,14 +43,13 @@ namespace Fmt {
 
     /* Black or white ink for a highlight colour; memoised, a row's
      * highlight colour is re-read every tick. */
-    private Gee.HashMap<string, string>? contrast_cache = null;
-    public string contrast_ink(string hex) {
-        if (contrast_cache == null) contrast_cache = new Gee.HashMap<string, string>();
-        var hit = contrast_cache[hex];
-        if (hit != null) return hit;
+    private Gee.HashMap<string, int>? contrast_cache = null;
+    public Ink contrast_ink(string hex) {
+        if (contrast_cache == null) contrast_cache = new Gee.HashMap<string, int>();
+        if (contrast_cache.has_key(hex)) return (Ink) contrast_cache[hex];
         Gdk.RGBA c = Gdk.RGBA();
-        string ink = "#FFFFFF";
-        if (c.parse(hex) && 0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 0.6) ink = "#000000";
+        Ink ink = Ink.WHITE;
+        if (c.parse(hex) && 0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 0.6) ink = Ink.BLACK;
         contrast_cache[hex] = ink;
         return ink;
     }

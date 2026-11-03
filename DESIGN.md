@@ -180,7 +180,7 @@ GTK StackSwitcher, not homogeneous. Each tab is transparent with a 2px bottom bo
 The combobox, tree toggle, search entry and buttons share one recipe: surface background, 1px rule border, 4px radius and 24px minimum height.
 
 ### Load-band table (signature)
-A TreeView whose foreground and weight are bound to model columns, so no per-cell code runs. A pinned row gets a symbolic pin icon and a 600-weight name.
+A TreeView drawn with one text cell (`src/table_text.vala`). Each cell's ink role and weight is a single model int, resolved against the theme at draw time. The cell keeps the shaped text of every value it has drawn. A pinned row gets a symbolic pin icon, in the row's ink, after a 600-weight name.
 
 ### Graphs
 Cairo DrawingAreas on the graph ground with a hairline grid. History graphs pin the newest sample to the right edge and draw a 0.16-alpha fill under a 1.5px stroke. The treemap picks label ink per tile for contrast.

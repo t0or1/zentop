@@ -31,7 +31,7 @@ The design system lives in `DESIGN.md`.
     * **Temperatures:** every hwmon and thermal-zone sensor, grouped by device (CPU, GPU, NVMe, chipset, Wi-Fi…).
         * Each sensor shows its min, peak and the driver's own warning and critical thresholds.
 * **Pie Graph:** The top 10 processes by CPU% + memory%.
-* **File Systems:** A partition table, plus a WizTree-style treemap or pie of any disk.
+* **File Systems:** A partition table, plus a WizTree-style treemap or pie of any disk. Sizes are disk usage like `du`, scanned on several threads.
 * **Themes:** 6 themes, switched live: Default (GitHub Dark), EVA-01, MAGI, EVA-00, EVA-02 and Pastel Pink.
 * **Right-click menu on a process:**
     * Pin to Top
@@ -77,19 +77,20 @@ Log out and back in once, and the counters show up in Power Consumption. To undo
 
 ## Performance
 
-Measured over 60 s with about 370 processes running:
+Measured over 25 s with about 380 processes running, several of them reordering the list:
 
 | Tab | CPU (of one core) | RAM |
 |---|---|---|
-| Processes | ~0.7–0.9% | 39 MB |
-| Resources | 0.13% | 40 MB |
-| Power Consumption / Temperatures | 0.26% / 0.16% | 40 MB |
+| Processes | ~0.5% | 39 MB |
+| Resources | 0.12% | 40 MB |
+| Pie Graph | ~0.25% | 39 MB |
 | Minimised | 0% | 39 MB |
 
 * **Kept-open files:** `/proc` and `/sys` files stay open and are re-read with `pread`. That is about 3x cheaper than reopening them, and they are parsed in place.
 * **Visible tab only:** only the visible tab or sub-page does any work, and tabs are built the first time you open them.
 * **Minimised:** nothing runs while the window is minimised, not even a timer.
 * **Table updates:** tables only redraw rows whose text changed.
+* **Shaped text is kept:** table cells keep the shaped text of every value they have drawn, so a redraw only paints glyphs.
 
 ## Layout
 

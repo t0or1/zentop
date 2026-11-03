@@ -1,7 +1,7 @@
 /* main.vala -- entry point. Module map (all in src/):
  *   data:  proc_reader  process_scan  resources_data  filesystems_data
  *          sensors_data  native  config
- *   look:  theme  graphs  widgets  util
+ *   look:  theme  graphs  widgets  table_text  util
  *   tabs:  tab_processes (+ process_actions, process_feed)  tab_resources
  *          (+ tab_sensors)
  *          tab_pie  tab_filesystems  tab_themes
