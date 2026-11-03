@@ -156,9 +156,14 @@ public class TableText : Gtk.CellRenderer {
         shaped_count = 0;
     }
 
-    private Gdk.RGBA ink(Gtk.Widget widget) {
+    /* On a selected row every cell takes the selection's own ink: idle grey
+     * on the selection colour falls under 4.5:1 in most themes, and a
+     * highlighted row's black ink would vanish (its highlight isn't painted
+     * under the selection). Hot cells stay bold, so they still stand out. */
+    private Gdk.RGBA ink(Gtk.Widget widget, Gtk.CellRendererState flags) {
         int code = style & 0xF;
-        if (code != Ink.DEFAULT && code < Ink.N) return theme.inks[code];
+        bool selected = (flags & Gtk.CellRendererState.SELECTED) != 0;
+        if (!selected && code != Ink.DEFAULT && code < Ink.N) return theme.inks[code];
         var sc = widget.get_style_context();
         var state = sc.get_state();
         if (ink_generation != theme.generation) {
@@ -215,7 +220,7 @@ public class TableText : Gtk.CellRenderer {
             Gdk.cairo_rectangle(cr, cell_area);
             cr.clip();
         }
-        Gdk.RGBA c = ink(widget);
+        Gdk.RGBA c = ink(widget, flags);
         Gdk.cairo_set_source_rgba(cr, c);
         cr.move_to(x, y);
         Pango.cairo_show_layout(cr, s.layout);

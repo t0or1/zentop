@@ -81,10 +81,10 @@ public class FilesystemsTab : Gtk.Box {
         pack_start(heading, false, false, 0);
 
         var bar = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 8);
-        scan_button = Ui.text_button("Analyze Selected Disk");
+        scan_button = Ui.text_button("ANALYZE SELECTED DISK");
         scan_button.clicked.connect(start_scan);
         bar.pack_start(scan_button, false, false, 0);
-        cancel_button = Ui.text_button("Cancel");
+        cancel_button = Ui.text_button("CANCEL");
         cancel_button.clicked.connect(() => { if (scan_cancel != null) scan_cancel.cancel(); });
         cancel_button.no_show_all = true;
         bar.pack_start(cancel_button, false, false, 0);
@@ -97,7 +97,7 @@ public class FilesystemsTab : Gtk.Box {
         bar.pack_start(pie_toggle, false, false, 0);
         spinner = new Gtk.Spinner();
         bar.pack_start(spinner, false, false, 0);
-        status = Ui.label("Select a partition above, then Analyze.", "bar-label");
+        status = Ui.label("Select a partition above, then ANALYZE SELECTED DISK.", "bar-label");
         status.ellipsize = Pango.EllipsizeMode.END;
         bar.pack_start(status, true, true, 0);
         pack_start(bar, false, false, 4);
@@ -189,7 +189,7 @@ public class FilesystemsTab : Gtk.Box {
         var c = cache.get_scan(mp);
         if (c == null) {
             show_entries(new Gee.ArrayList<ScanEntry>());
-            status.label = "%s hasn't been analysed yet: Analyze Selected Disk.".printf(mp);
+            status.label = "%s hasn't been analysed yet: press ANALYZE SELECTED DISK.".printf(mp);
             return;
         }
         show_entries(c.entries);
@@ -223,6 +223,7 @@ public class FilesystemsTab : Gtk.Box {
         treemap.set_entries(shown);
         var slices = new Slice[shown.length];
         for (int i = 0; i < shown.length; i++) slices[i] = new Slice(shown[i].name, (double) shown[i].size);
+        if (others > 0) slices[top].other = true;
         pie.set_slices(slices);
         legend.update(slices, true);
     }

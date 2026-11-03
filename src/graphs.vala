@@ -6,6 +6,9 @@
 public const int HISTORY_LEN = 60; // ~1 minute at 1 s ticks
 public const string[] SERIES = {"s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7"};
 
+/* Turns a graph's top (and bottom) value into its scale label. */
+public delegate string ScaleText(double v);
+
 public class HistoryGraph : Gtk.DrawingArea {
     private ThemeColors theme;
     private string[] roles;
@@ -17,6 +20,10 @@ public class HistoryGraph : Gtk.DrawingArea {
     public double min_top = 1;        // auto-scale never zooms in past this (5 W...)
     public bool fill = true;          // area under the line; off for many-line sensor graphs
     public bool float_bottom = false; // y range hugs the data (temperatures) instead of starting at 0
+    // auto-scaled graphs label their range (top-left, and bottom-left when it floats):
+    // without it a peak has no size
+    public ScaleText? scale_text = null;
+    private string[] scale_shown = {"", ""};   // text in each label slot: unchanged = not re-shaped
 
     public HistoryGraph(ThemeColors theme, string[] roles, double y_max = 100.0, bool auto_scale = false, int height = 120) {
         this.theme = theme;
@@ -37,6 +44,30 @@ public class HistoryGraph : Gtk.DrawingArea {
     private double at(int s, int i) {
         // i = 0 is the oldest stored sample
         return data[s, (head - count + i + 2 * HISTORY_LEN) % HISTORY_LEN];
+    }
+
+    /* Two label slots (top, bottom), each its own layout, so a label whose
+     * text didn't change since the last second isn't shaped again. */
+    private Pango.Layout?[] scale_layouts = new Pango.Layout?[2];
+
+    private void draw_scale(Cairo.Context cr, int slot, string text, int y) {
+        var layout = scale_layouts[slot];
+        if (layout == null) {
+            layout = create_pango_layout("");
+            var attrs = new Pango.AttrList();
+            attrs.insert(Pango.AttrFontFeatures.@new("tnum 1"));
+            attrs.insert(new Pango.AttrSize.with_absolute(10 * Pango.SCALE));
+            layout.set_attributes(attrs);
+            scale_layouts[slot] = layout;
+            scale_shown[slot] = "";
+        }
+        if (scale_shown[slot] != text) {
+            layout.set_text(text, -1);
+            scale_shown[slot] = text;
+        }
+        set_rgb(cr, theme.get_role("idle"));
+        cr.move_to(6, y);
+        Pango.cairo_show_layout(cr, layout);
     }
 
     private static void set_rgb(Cairo.Context cr, Gdk.RGBA c, double alpha = 1.0) {
@@ -77,6 +108,10 @@ public class HistoryGraph : Gtk.DrawingArea {
                 top = double.max(hi * 1.25, min_top);
             }
         }
+        if (scale_text != null) {
+            draw_scale(cr, 0, scale_text(top), 4);
+            if (float_bottom) draw_scale(cr, 1, scale_text(bottom), h - 16);
+        }
         double step = (double) w / (HISTORY_LEN - 1);
         double x0 = w - (count - 1) * step; // newest sample on the right edge
         double scale = h / (top - bottom);
@@ -116,7 +151,14 @@ public class HistoryGraph : Gtk.DrawingArea {
 public class Slice {
     public string label;
     public double value;
+    public bool other = false;   // the "Others" remainder: drawn in a neutral ink, not a series colour
+    public int pid = -1;
     public Slice(string label, double value) { this.label = label; this.value = value; }
+
+    /* Its colour role: series colours in order, neutral for the remainder. */
+    public static unowned string role_for(Slice[] slices, int i) {
+        return slices[i].other ? "idle" : SERIES[i % 8];
+    }
 }
 
 /* Ring of wedges, coloured s0..s7 from the theme. Gaps between wedges are
@@ -148,7 +190,7 @@ public class PieGraph : Gtk.DrawingArea {
         double a = -Math.PI / 2; // 12 o'clock
         for (int i = 0; i < slices.length; i++) {
             double b = a + slices[i].value / total * 2 * Math.PI;
-            var c = theme.get_role(SERIES[i % 8]);
+            var c = theme.get_role(Slice.role_for(slices, i));
             cr.set_source_rgb(c.red, c.green, c.blue);
             cr.move_to(cx, cy);
             cr.arc(cx, cy, radius, a, b);
@@ -297,7 +339,23 @@ public class TreemapGraph : Gtk.DrawingArea {
         queue_draw();
     }
 
-    private static double lum(Gdk.RGBA c) { return 0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue; }
+    /* Of white, black and the theme's own ink and ground, the one with the
+     * most WCAG contrast on this tile: mid-tone tiles (pastel, red) fail
+     * with a plain light/dark switch. */
+    private Gdk.RGBA label_ink(Gdk.RGBA tile) {
+        Gdk.RGBA[] candidates = {
+            Gdk.RGBA() { red = 1, green = 1, blue = 1, alpha = 1 },
+            Gdk.RGBA() { red = 0, green = 0, blue = 0, alpha = 1 },
+            theme.get_role("ink"), theme.get_role("bg")
+        };
+        Gdk.RGBA best = candidates[0];
+        double best_c = 0;
+        foreach (var c in candidates) {
+            double k = Fmt.contrast(c, tile);
+            if (k > best_c) { best_c = k; best = c; }
+        }
+        return best;
+    }
 
     public override bool draw(Cairo.Context cr) {
         int w = get_allocated_width(), h = get_allocated_height();
@@ -317,7 +375,6 @@ public class TreemapGraph : Gtk.DrawingArea {
             laid_h = h;
         }
 
-        var dark = theme.get_role("bg");
         var layout = create_pango_layout("");
         layout.set_font_description(name_font);
         layout.set_ellipsize(Pango.EllipsizeMode.END);
@@ -334,8 +391,7 @@ public class TreemapGraph : Gtk.DrawingArea {
             cr.rectangle(r.x + 0.5, r.y + 0.5, double.max(r.w - 1, 0), double.max(r.h - 1, 0));
             cr.fill();
             if (r.w > 42 && r.h > 20) {
-                Gdk.RGBA ink = Gdk.RGBA() { red = 1, green = 1, blue = 1, alpha = 1 };
-                if (lum(tile) > 0.5) ink = dark;
+                Gdk.RGBA ink = label_ink(tile);
                 layout.set_width((int) ((r.w - 12) * Pango.SCALE));
                 cr.save();
                 cr.rectangle(r.x, r.y, r.w, r.h);

@@ -33,6 +33,9 @@ public class ZentopWindow : Gtk.ApplicationWindow {
     public ZentopWindow(Gtk.Application app) {
         Object(application: app, title: "zentop", default_width: 1440, default_height: 900);
         ctx = new AppContext(this);
+        // ▼ when the biggest figures are on top, as in most task managers
+        // (GTK's own convention is the reverse, which reads as "ascending")
+        Gtk.Settings.get_default().gtk_alternative_sort_arrows = true;
         theme_id = AppConfig.get_theme();
         load_theme(theme_id);
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css,

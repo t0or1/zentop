@@ -1,6 +1,7 @@
 /* tab_sensors.vala -- the Power Consumption and Temperatures pages inside
  * Resources. One history graph (a line per group: CPU, GPU, NVMe...) above
- * a table of every sensor with its live, lowest, average and peak figures;
+ * a table of every sensor: what it measures, its live, lowest, average and
+ * peak figures; each group row names the device (CPU model, GPU, drive);
  * temperatures add the driver's own warning and critical thresholds and
  * turn hot past them. Built once per sensor discovery; a tick only rewrites
  * the cells whose text changed. */
@@ -8,7 +9,7 @@
 const double TEMP_HOT_FALLBACK = 85.0;  // when a driver gives no threshold
 
 public class SensorsPage : Gtk.Box {
-    enum Col { CHIP, NAME, SOURCE, NOW, C1, C2, C3, C4, ST_NAME, ST_NOW, CHIP_PIX, N }
+    enum Col { CHIP, NAME, WHAT, SOURCE, NOW, C1, C2, C3, C4, ST_NAME, ST_NOW, ST_WHAT, CHIP_PIX, N }
 
     private AppContext ctx;
     private SensorHub hub;
@@ -37,7 +38,7 @@ public class SensorsPage : Gtk.Box {
 
         var types = new Type[Col.N];
         for (int i = 0; i < Col.N; i++) types[i] = typeof(string);
-        types[Col.ST_NAME] = types[Col.ST_NOW] = typeof(int);
+        types[Col.ST_NAME] = types[Col.ST_NOW] = types[Col.ST_WHAT] = typeof(int);
         types[Col.CHIP_PIX] = typeof(Gdk.Pixbuf);
         store = new Gtk.TreeStore.newv(types);
         view = new Gtk.TreeView.with_model(store);
@@ -67,8 +68,8 @@ public class SensorsPage : Gtk.Box {
 
     private void build_columns() {
         string[] heads = kind == SensorKind.POWER
-            ? new string[] {"", "SENSOR", "SOURCE", "NOW", "MIN", "AVG", "PEAK", ""}
-            : new string[] {"", "SENSOR", "SOURCE", "NOW", "MIN", "PEAK", "HIGH", "CRIT"};
+            ? new string[] {"", "SENSOR", "WHAT IT MEASURES", "SOURCE", "NOW", "MIN", "AVG", "PEAK", ""}
+            : new string[] {"", "SENSOR", "WHAT IT MEASURES", "SOURCE", "NOW", "MIN", "PEAK", "HIGH", "CRIT"};
         for (int i = 0; i < heads.length; i++) {
             if (i > 0 && heads[i] == "") continue;
             var col = new Gtk.TreeViewColumn();
@@ -87,13 +88,17 @@ public class SensorsPage : Gtk.Box {
             bool numeric = i >= Col.NOW;
             var r = new TableText(ctx.theme, numeric ? 1.0f : 0.0f, numeric ? ctx.tnum : null);
             col.pack_start(r, true);
-            r.bind(col, i, i == Col.NAME ? (int) Col.ST_NAME : (i == Col.NOW ? (int) Col.ST_NOW : -1));
+            int style_col = -1;
+            if (i == Col.NAME) style_col = Col.ST_NAME;
+            else if (i == Col.NOW) style_col = Col.ST_NOW;
+            else if (i == Col.WHAT) style_col = Col.ST_WHAT;
+            r.bind(col, i, style_col);
             // Fixed widths + fixed-height mode: a changed figure redraws its row
             // without GTK re-measuring rows and columns (that was ~1/4 of
             // this page's CPU). The widths fit "142.35 W" and "100.0°C".
             col.sizing = Gtk.TreeViewColumnSizing.FIXED;
-            col.fixed_width = i == Col.NAME ? 260 : (i == Col.SOURCE ? 140 : 96);
-            col.expand = i == Col.NAME;
+            col.fixed_width = i == Col.WHAT ? 240 : (i == Col.NAME ? 180 : (i == Col.SOURCE ? 120 : 96));
+            col.expand = i == Col.WHAT;
             col.resizable = true;
             view.append_column(col);
         }
@@ -116,14 +121,17 @@ public class SensorsPage : Gtk.Box {
         foreach (var g in groups) {
             Gtk.TreeIter parent;
             store.append(out parent, null);
-            store.set(parent, Col.NAME, g, Col.ST_NAME, cell_style(Ink.DEFAULT, WEIGHT_BOLD), Col.ST_NOW, 0, -1);
+            // the group's title ("NVMe") and, beside it, the device it is
+            store.set(parent, Col.NAME, hub.group_title[g] ?? g, Col.WHAT, hub.group_device[g] ?? "",
+                      Col.ST_NAME, cell_style(Ink.DEFAULT, WEIGHT_BOLD), Col.ST_NOW, 0, Col.ST_WHAT, 0, -1);
             Sensor? lead = null;
             foreach (var s in list) {
                 if (s.group != g) continue;
                 if (lead == null && !s.locked && leads.size < 8) { lead = s; leads.add(s); }
                 Gtk.TreeIter it;
                 store.append(out it, parent);
-                store.set(it, Col.NAME, s.label, Col.SOURCE, s.source, Col.ST_NAME, 0, Col.ST_NOW, 0,
+                store.set(it, Col.NAME, s.label, Col.WHAT, s.what, Col.SOURCE, s.source,
+                          Col.ST_NAME, 0, Col.ST_NOW, 0, Col.ST_WHAT, cell_style(Ink.IDLE),
                           Col.CHIP_PIX, lead == s ? swatch(SERIES[leads.size - 1]) : null, -1);
                 ordered.add(s);
                 iters.add(it);
@@ -140,6 +148,8 @@ public class SensorsPage : Gtk.Box {
             graph.min_top = 5.0;
             graph.fill = leads.size <= 2;                  // many overlapping fills turn to mud
             graph.float_bottom = kind == SensorKind.TEMP;  // 35-60 °C shouldn't sit in the top fifth
+            if (kind == SensorKind.TEMP) graph.scale_text = (v) => "%.0f°C".printf(v);
+            else graph.scale_text = (v) => v < 10 ? "%.1f W".printf(v) : "%.0f W".printf(v);
             graph_holder.pack_start(graph, false, false, 0);
             graph.show();
         }

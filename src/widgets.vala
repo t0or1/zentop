@@ -40,6 +40,8 @@ public class Legend : Gtk.Box {
         if (total <= 0) total = 1;
         for (int i = 0; i < rows.length; i++) {
             if (i < slices.length) {
+                unowned string role = Slice.role_for(slices, i);
+                if (chips[i].role != role) { chips[i].role = role; chips[i].queue_draw(); }
                 Ui.set_text(names[i], slices[i].label);
                 Ui.set_text(values[i], as_bytes ? Fmt.bytes((int64) slices[i].value)
                                                 : "%.1f%%".printf(slices[i].value / total * 100));

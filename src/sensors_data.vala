@@ -31,6 +31,7 @@ public class Sensor {
     public string group;          // what the reading is about: "CPU", "GPU", "NVMe Samsung SSD 970"
     public string source;         // where it comes from: "k10temp", "RAPL", "NVML"
     public string label;          // "Tctl", "Package", "edge"
+    public string what = "";      // what it measures, in words: "CPU core die (CCD 1)"
     public double value = double.NAN;  // W or °C; NaN = no reading right now
     public double low = double.INFINITY;
     public double peak = -double.INFINITY;
@@ -51,6 +52,7 @@ public class Sensor {
     internal int64 prev_us = 0;
     internal int64 wrap = 0;
     internal void* nv_dev = null;
+    internal string dev_dir = "";      // its hwmon or power_supply folder, to name the device
 
     public bool mode_is_energy() { return mode == ReadMode.ENERGY; }
     public double avg() { return samples > 0 ? sum / samples : double.NAN; }
@@ -77,6 +79,9 @@ public class SensorHub : Object {
     public Gee.ArrayList<Sensor> power = new Gee.ArrayList<Sensor>();
     public Gee.ArrayList<Sensor> temps = new Gee.ArrayList<Sensor>();
     public bool rapl_locked = false;   // RAPL exists but energy_uj isn't readable
+    // per group key: a short title ("NVMe") and the device it is ("Samsung SSD 970 EVO Plus 1TB")
+    public Gee.HashMap<string, string> group_title = new Gee.HashMap<string, string>();
+    public Gee.HashMap<string, string> group_device = new Gee.HashMap<string, string>();
     private string root;
     private string topology = "";
     private Module? nvml = null;
@@ -203,6 +208,7 @@ public class SensorHub : Object {
         discover_batteries();
         discover_thermal_zones(hwmon_names);
         discover_nvml();
+        identify();
     }
 
     /* What a hwmon driver is reading, in words a person recognises. */
@@ -238,6 +244,7 @@ public class SensorHub : Object {
                 s.kind = SensorKind.TEMP;
                 s.group = group;
                 s.source = name;
+                s.dev_dir = dir;
                 s.label = read_line(Path.build_filename(dir, "temp%s_label".printf(idx)))
                           ?? (temp_count == 1 ? "Temperature" : "Temp " + idx);
                 s.path = Path.build_filename(dir, f);
@@ -256,6 +263,7 @@ public class SensorHub : Object {
                 s.kind = SensorKind.POWER;
                 s.group = group;
                 s.source = name;
+                s.dev_dir = dir;
                 s.label = read_line(Path.build_filename(dir, "power%s_label".printf(idx))) ?? "Power " + idx;
                 s.path = Path.build_filename(dir, f);
                 s.scale = 0.000001;
@@ -266,6 +274,7 @@ public class SensorHub : Object {
                 s.kind = SensorKind.POWER;
                 s.group = group;
                 s.source = name;
+                s.dev_dir = dir;
                 s.label = read_line(Path.build_filename(dir, "energy%s_label".printf(idx))) ?? "Energy " + idx;
                 s.path = Path.build_filename(dir, f);
                 s.mode = ReadMode.ENERGY;
@@ -319,6 +328,7 @@ public class SensorHub : Object {
             s.kind = SensorKind.POWER;
             s.group = "Battery";
             s.source = b;
+            s.dev_dir = dir;
             s.label = b;
             string pw = Path.build_filename(dir, "power_now");
             string cur = Path.build_filename(dir, "current_now");
@@ -409,6 +419,149 @@ public class SensorHub : Object {
                 temps.add(s);
             }
         }
+    }
+
+    // ------------------------------------------------------------- naming
+
+    /* After discovery: each sensor's "what it measures", and each group's
+     * title and device name. pci.ids lookups happen here, once per group. */
+    private void identify() {
+        group_title.clear();
+        group_device.clear();
+        foreach (var list in new Gee.ArrayList<Sensor>[] {power, temps}) {
+            foreach (var s in list) {
+                if (s.what == "") s.what = describe(s);
+                if (group_title.has_key(s.group)) continue;
+                string title = s.group, device = "";
+                if (s.group.has_prefix("NVMe ") || s.group.has_prefix("Disk ") || s.source == "NVML") {
+                    int sp = s.group.index_of(" ");
+                    title = s.group.substring(0, sp);
+                    device = s.group.substring(sp + 1);
+                    if (s.source == "NVML" && device.length > 2 && device[0].isdigit() && device[1] == ' ') {
+                        title += " " + device.substring(0, 1);     // "GPU 2 RTX 3060" -> "GPU 2"
+                        device = device.substring(2);
+                    }
+                } else if (s.group == "CPU" || s.group.has_prefix("CPU ")) {
+                    device = HwInfo.cpu_model();
+                } else if (s.group == "Memory") {
+                    device = HwInfo.ram_summary();
+                } else if (s.group.has_prefix("Motherboard")) {
+                    device = HwInfo.board_name() ?? "";
+                } else if (s.group.has_prefix("ACPI")) {
+                    device = "Firmware (ACPI) thermal zone";
+                } else if (s.group == "Platform") {
+                    device = "Processor and the platform around it";
+                } else if (s.group == "Thermal zones") {
+                    device = "Zones the firmware and platform drivers define";
+                } else if (s.group == "Battery") {
+                    string? maker = read_line(Path.build_filename(s.dev_dir, "manufacturer"));
+                    string? model = read_line(Path.build_filename(s.dev_dir, "model_name"));
+                    device = string.joinv(" ", new string[] {maker ?? "", model ?? ""}).strip();
+                } else if (s.dev_dir != "") {
+                    device = HwInfo.device_name(Path.build_filename(s.dev_dir, "device")) ?? "";
+                }
+                group_title[s.group] = title;
+                group_device[s.group] = device;
+            }
+        }
+    }
+
+    /* What a sensor measures, from its driver and label. Labels are the
+     * drivers' own; where they're cryptic (Tctl, PPT, AUXTIN1) this says
+     * what they mean. Empty when the label already says it all. */
+    public static string describe(Sensor s) {
+        string d = s.source.down(), l = s.label;
+        string ll = l.down();
+        int num = -1;
+        // trailing number of the label ("Tccd2" -> 2, "Core 3" -> 3)
+        int e = l.length;
+        while (e > 0 && l[e - 1].isdigit()) e--;
+        if (e < l.length) num = int.parse(l.substring(e));
+
+        if (s.source == "RAPL") {
+            if (l.has_prefix("Package")) return "Whole CPU package: cores, cache, iGPU, memory controller";
+            if (l == "Cores") return "CPU cores only";
+            if (l.has_prefix("Uncore")) return "Integrated GPU and the rest of the uncore";
+            if (l == "DRAM") return "Memory (DRAM)";
+            if (ll.contains("psys")) return "Whole platform: processor, memory and more";
+            return "";
+        }
+        if (s.source == "NVML") return s.kind == SensorKind.POWER ? "Whole graphics card" : "GPU core";
+        if (s.group == "Battery") return "Charge / discharge rate";
+        if (s.group == "Thermal zones") return describe_zone(l);
+
+        if (d == "k10temp" || d == "zenpower") {
+            if (l == "Tctl") return "The value fans follow (on some Ryzen it includes an offset)";
+            if (l == "Tdie") return "CPU die";
+            if (ll.has_prefix("tccd")) return "Core complex die %d (one chiplet of cores)".printf(num);
+            if (l.has_prefix("SVI2_P_Core")) return "CPU cores, from the voltage regulator";
+            if (l.has_prefix("SVI2_P_SoC")) return "SoC: memory controller, iGPU and I/O";
+            return "";
+        }
+        if (d == "coretemp") {
+            if (l.has_prefix("Package")) return "Whole CPU package (the hottest core)";
+            if (l.has_prefix("Core")) return "CPU core %d".printf(num);
+            return "";
+        }
+        if (d == "zenergy" || d == "amd_energy") {
+            if (ll.has_prefix("esocket")) return "Whole CPU socket";
+            if (ll.has_prefix("ecore")) return "CPU core %d".printf(num);
+            return "";
+        }
+        if (d == "amdgpu" || d == "radeon") {
+            if (l == "edge") return "GPU die, edge sensor";
+            if (l == "junction") return "GPU hotspot: the hottest point on the die";
+            if (l == "mem") return "Video memory (VRAM)";
+            if (l == "PPT" || l == "slowPPT") return "Package power: on Ryzen APUs the whole chip, CPU + GPU";
+            if (l == "fastPPT") return "Short-term package power limit tracking";
+            return s.kind == SensorKind.POWER ? "Graphics power" : "GPU";
+        }
+        if (d == "nouveau") return s.kind == SensorKind.POWER ? "Whole graphics card" : "GPU core";
+        if (d == "i915" || d == "xe") return s.kind == SensorKind.POWER ? "Graphics power" : "GPU";
+        if (d == "nvme") {
+            if (l == "Composite") return "Drive temperature it reports and throttles on";
+            if (num == 1) return "Usually the controller";
+            if (num == 2) return "Usually the flash memory (NAND)";
+            return "Extra drive sensor";
+        }
+        if (d == "drivetemp") return "Drive temperature (SMART)";
+        if (d.has_prefix("iwlwifi") || d.has_prefix("mt79") || d.has_prefix("ath") || d.has_prefix("rtw")) return "Wi-Fi card";
+        if (d.has_prefix("pch_")) return "Chipset (PCH)";
+        if (d == "acpitz") return "Defined by the firmware: often a board or case estimate";
+        if (d == "spd5118" || d == "jc42") return "Memory module (DIMM)";
+        if (d == "cpu_thermal" || d.has_prefix("via_cputemp")) return "CPU";
+        if (s.group.has_prefix("Motherboard")) {
+            string u = l.up();
+            if (u == "SYSTIN") return "Motherboard";
+            if (u == "CPUTIN") return "Next to the CPU socket (board sensor)";
+            if (u.has_prefix("AUXTIN")) return "Auxiliary input: VRM, chipset or case, depends on the board";
+            if (u.has_prefix("PECI")) return "CPU, reported over PECI";
+            if (u.has_prefix("SMBUSMASTER")) return "CPU, read over SMBus (often matches Tctl)";
+            if (u.has_prefix("TSI")) return "CPU, read over AMD TSI";
+            if (u.has_prefix("PCH")) return "Chipset";
+            return "Board sensor";
+        }
+        return "";
+    }
+
+    /* ACPI / DPTF thermal zone types, which are four-letter codes. */
+    private static string describe_zone(string type) {
+        string t = type.down();
+        if (t.has_prefix("int3400")) return "Intel DPTF policy zone (virtual)";
+        if (t == "tcpu" || t.has_prefix("cpu")) return "CPU";
+        if (t == "b0d4" || t == "b0db" || t.has_prefix("proc")) return "Intel processor thermal device";
+        if (t.contains("skin") || t == "tskn") return "Laptop surface (skin)";
+        if (t == "tmem") return "Memory area";
+        if (t == "tamb" || t.has_prefix("amb")) return "Ambient air inside the case";
+        if (t == "tchg" || t.has_prefix("chrg") || t.contains("charger")) return "Battery charger";
+        if (t == "tvr" || t.has_prefix("vr")) return "Voltage regulator";
+        if (t.has_prefix("sen")) return "Board sensor (DPTF)";
+        if (t.has_prefix("soc_dts")) return "SoC thermal sensor";
+        if (t.has_prefix("gpu")) return "GPU";
+        if (t.has_prefix("iwlwifi")) return "Wi-Fi card";
+        if (t.has_prefix("pch_")) return "Chipset (PCH)";
+        if (t == "acpitz") return "Defined by the firmware: often a board or case estimate";
+        return "";
     }
 
     /* Display order for groups: the parts people check first come first. */

@@ -5,7 +5,7 @@ namespace Fmt {
     public string bytes(int64 n) {
         if (n < 0) return "-";
         double v = (double) n;
-        if (v < 1024.0) return "%.1fB".printf(v);
+        if (v < 1024.0) return "%.0fB".printf(v);   // "0B", "512B": a tenth of a byte means nothing
         v /= 1024.0;
         if (v < 1024.0) return "%.1fKB".printf(v);
         v /= 1024.0;
@@ -41,17 +41,35 @@ namespace Fmt {
         return now.get_year() * 1000 + now.get_day_of_year();
     }
 
-    /* Black or white ink for a highlight colour; memoised, a row's
-     * highlight colour is re-read every tick. */
+    /* Black or white ink for a highlight colour, whichever has the higher
+     * WCAG contrast on it; memoised, a row's highlight is re-read every tick. */
     private Gee.HashMap<string, int>? contrast_cache = null;
     public Ink contrast_ink(string hex) {
         if (contrast_cache == null) contrast_cache = new Gee.HashMap<string, int>();
         if (contrast_cache.has_key(hex)) return (Ink) contrast_cache[hex];
         Gdk.RGBA c = Gdk.RGBA();
         Ink ink = Ink.WHITE;
-        if (c.parse(hex) && 0.299 * c.red + 0.587 * c.green + 0.114 * c.blue > 0.6) ink = Ink.BLACK;
+        if (c.parse(hex)) {
+            double l = luminance(c);
+            // contrast with white: 1.05 / (l + 0.05); with black: (l + 0.05) / 0.05
+            if ((l + 0.05) / 0.05 > 1.05 / (l + 0.05)) ink = Ink.BLACK;
+        }
         contrast_cache[hex] = ink;
         return ink;
+    }
+
+    /* WCAG relative luminance (sRGB, linearised). */
+    public double luminance(Gdk.RGBA c) {
+        return 0.2126 * linear(c.red) + 0.7152 * linear(c.green) + 0.0722 * linear(c.blue);
+    }
+
+    private double linear(double v) {
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    }
+
+    public double contrast(Gdk.RGBA a, Gdk.RGBA b) {
+        double la = luminance(a), lb = luminance(b);
+        return (double.max(la, lb) + 0.05) / (double.min(la, lb) + 0.05);
     }
 }
 

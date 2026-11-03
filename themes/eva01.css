@@ -250,3 +250,9 @@ checkbutton check, radiobutton radio { border: 1px solid #4A3878; background-col
 .zt-c-s5 { color: #FF8A3D; }
 .zt-c-s6 { color: #C9A8FF; }
 .zt-c-s7 { color: #3FC99A; }
+
+/* ---- keyboard focus: a ring in the accent, drawn only on the focused
+   widget and only after keyboard use (GTK's focus-visible), so it costs
+   nothing while you use the mouse ---- */
+*:focus { outline-color: #A6FF8C; outline-style: solid; outline-width: 2px; outline-offset: -2px; }
+treeview.data-table:focus { outline-width: 1px; outline-offset: -1px; }

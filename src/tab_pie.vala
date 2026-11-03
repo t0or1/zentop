@@ -1,7 +1,7 @@
 /* tab_pie.vala -- the top consumers as a ring. Fed by the same process
  * scan as the table (no second pass over /proc). */
 
-const int PIE_TOP_N = 10; // wedges; the rest is grouped into "Others"
+const int PIE_TOP_N = 7; // wedges, one per series colour; the rest is a neutral "Others"
 
 public class PieTab : Gtk.Box {
     private PieGraph pie;
@@ -30,7 +30,11 @@ public class PieTab : Gtk.Box {
         var scored = new Gee.ArrayList<Slice>();
         foreach (var r in rows) {
             double score = r.cpu + r.mem * 100.0 / total_mem;
-            if (score > 0) scored.add(new Slice(r.name, score));
+            if (score > 0) {
+                var sl = new Slice(r.name, score);
+                sl.pid = r.pid;
+                scored.add(sl);
+            }
         }
         scored.sort((a, b) => a.value < b.value ? 1 : (a.value > b.value ? -1 : 0));
         int top = int.min(PIE_TOP_N, scored.size);
@@ -39,7 +43,19 @@ public class PieTab : Gtk.Box {
         bool with_others = others > 0.05;
         var slices = new Slice[top + (with_others ? 1 : 0)];
         for (int i = 0; i < top; i++) slices[i] = scored[i];
-        if (with_others) slices[top] = new Slice("Others (%d)".printf(scored.size - top), others);
+        // six "python3" rows say nothing: same-named entries get their pid
+        for (int i = 0; i < top; i++) {
+            for (int j = 0; j < top; j++) {
+                if (i != j && scored[j].label == scored[i].label) {
+                    slices[i] = new Slice("%s · %d".printf(scored[i].label, scored[i].pid), scored[i].value);
+                    break;
+                }
+            }
+        }
+        if (with_others) {
+            slices[top] = new Slice("Others (%d)".printf(scored.size - top), others);
+            slices[top].other = true;
+        }
         // same names and the same one-decimal percentages = same picture
         string key = slices_key(slices);
         if (key == last_key) return;

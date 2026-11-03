@@ -22,7 +22,7 @@ The design system lives in `DESIGN.md`.
     * Search, plus All/My/Active filters.
     * Pause the table while you browse.
 * **Resources:** three sub-pages.
-    * **General Measurements:** history graphs for CPU, memory + swap and network, plus a per-core board.
+    * **General Measurements:** history graphs for CPU, memory + swap and network, plus a per-core board with each core's clock speed. Each section names its hardware: CPU model, RAM type/speed/modules, swap kind (zram, zswap, partition, file) and the network card.
     * **Power Consumption:** every power sensor the system exposes:
         * RAPL (CPU package, cores, iGPU, DRAM, platform)
         * hwmon power and energy (amdgpu, zenpower, zenergy, i915/xe)
@@ -30,7 +30,8 @@ The design system lives in `DESIGN.md`.
         * NVIDIA GPUs through NVML
     * **Temperatures:** every hwmon and thermal-zone sensor, grouped by device (CPU, GPU, NVMe, chipset, Wi-Fi…).
         * Each sensor shows its min, peak and the driver's own warning and critical thresholds.
-* **Pie Graph:** The top 10 processes by CPU% + memory%.
+    * Both pages name each device (CPU model, GPU, drive, motherboard...) and say what every sensor measures.
+* **Pie Graph:** The top 7 processes by CPU% + memory%, each in its own color, plus the rest as "Others".
 * **File Systems:** A partition table, plus a WizTree-style treemap or pie of any disk. Sizes are disk usage like `du`, scanned on several threads.
 * **Themes:** 6 themes, switched live: Default (GitHub Dark), EVA-01, MAGI, EVA-00, EVA-02 and Pastel Pink.
 * **Right-click menu on a process:**

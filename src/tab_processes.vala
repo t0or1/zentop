@@ -28,8 +28,8 @@ public class ProcessesTab : Gtk.Box {
         ST_ROW, ST_NAME, ST_CPU, ST_MEM, ST_RD, ST_WR, N
     }
     private const string[] TITLES = {
-        "PROCESS", "USER", "CPU", "CPUID", "MEMORY", "DISKREADTOTAL", "DISKWRITETOTAL",
-        "DISKREAD", "DISKWRITE", "PRIORITY", "STATUS", "STARTED", "CPU TIME"
+        "PROCESS", "USER", "CPU", "CORE", "MEMORY", "READ TOTAL", "WRITE TOTAL",
+        "READ /S", "WRITE /S", "PRIORITY", "STATUS", "STARTED", "CPU TIME"
     };
 
 
@@ -312,6 +312,7 @@ public class ProcessesTab : Gtk.Box {
         double v = n;
         int unit = 0;
         while (v >= 1024.0 && unit < 5) { v /= 1024.0; unit++; }
+        if (unit == 0) return (int64) Math.round(v) * 10;   // bytes show no decimal
         return unit * 100000000 + (int64) Math.round(v * 10);
     }
 

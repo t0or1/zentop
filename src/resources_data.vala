@@ -3,7 +3,10 @@
  * kept open and re-read with pread, then parsed in place: no line splitting,
  * no per-field strings. /proc/stat is read only as far as the cpu lines (its
  * "intr" line alone can be several KB). One sampler is shared by the header
- * and the Resources tab, so nothing is read twice in the same second. */
+ * and the Resources tab, so nothing is read twice in the same second.
+ * Per-core clock speed comes from cpufreq's scaling_cur_freq (one kept fd
+ * per core), or from the "cpu MHz" lines of /proc/cpuinfo where there is
+ * no cpufreq (most virtual machines). */
 
 public struct CpuTimes {
     public uint64 busy;
@@ -39,6 +42,11 @@ public class ResourcesSampler : Object {
     public double rx_rate = 0;          // bytes/s
     public double tx_rate = 0;
     public MemSnapshot mem = new MemSnapshot();
+
+    private ProcReader?[]? freq_files = null;  // scaling_cur_freq per core
+    private ProcReader? cpuinfo = null;         // fallback: "cpu MHz" lines
+    public double[] core_mhz = new double[0];   // NaN = unknown
+    public bool has_freq = false;               // any core's clock is readable
 
     public ResourcesSampler() {
         // "cpu" + one line per core, ~100 bytes each, plus slack
@@ -173,5 +181,61 @@ public class ResourcesSampler : Object {
         prev_rx = rx;
         prev_tx = tx;
         prev_net_us = now;
+    }
+
+    /* Current clock of each core, in MHz. */
+    public void sample_freqs() {
+        // the core count once: get_num_processors() reads /sys on every call
+        if (freq_files == null) open_freq_sources((int) GLib.get_num_processors());
+        int cores = freq_files.length;
+        if (core_mhz.length != cores) core_mhz = new double[cores];
+        if (cpuinfo != null) {
+            for (int i = 0; i < cores; i++) core_mhz[i] = double.NAN;
+            if (!cpuinfo.read()) return;
+            var s = Scan(cpuinfo);
+            int k = 0;
+            while (!s.at_end() && k < cores) {
+                if (s.starts_with("cpu MHz") && s.skip_past(':')) core_mhz[k++] = parse_decimal(ref s);
+                s.next_line();
+            }
+            return;
+        }
+        for (int i = 0; i < cores; i++) {
+            var f = freq_files[i];
+            if (f == null || !f.read()) { core_mhz[i] = double.NAN; continue; }
+            var s = Scan(f);
+            int64 khz = s.next_uint();
+            core_mhz[i] = khz > 0 ? khz / 1000.0 : double.NAN;
+        }
+    }
+
+    private void open_freq_sources(int cores) {
+        freq_files = new ProcReader?[cores];
+        for (int i = 0; i < cores; i++) {
+            // ZENTOP_SYSFS: a fake /sys for tests, as in sensors_data.vala
+            string path = Path.build_filename(Environment.get_variable("ZENTOP_SYSFS") ?? "/sys",
+                "devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq".printf(i));
+            if (Posix.access(path, Posix.R_OK) != 0) continue;
+            freq_files[i] = new ProcReader(path, 32);
+            has_freq = true;
+        }
+        if (has_freq) return;
+        // no cpufreq: /proc/cpuinfo, if it has clock lines at all (x86 does, ARM doesn't)
+        var info = new ProcReader("/proc/cpuinfo", 4096 + 2048 * cores);
+        if (!info.read() || !((string) info.buf).contains("cpu MHz")) return;
+        cpuinfo = info;
+        has_freq = true;
+    }
+
+    /* "2100.000" -> 2100.0, in place. */
+    private static double parse_decimal(ref Scan s) {
+        int64 whole = s.next_uint();
+        if (whole < 0) return double.NAN;
+        double v = whole, scale = 0.1;
+        if (s.i < s.n && s.b[s.i] == '.') {
+            s.i++;
+            while (s.i < s.n && s.b[s.i] >= '0' && s.b[s.i] <= '9') { v += (s.b[s.i] - '0') * scale; scale /= 10; s.i++; }
+        }
+        return v;
     }
 }
